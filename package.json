@@ -1,0 +1,24 @@
+{
+  "name": "homescout",
+  "version": "1.0.0",
+  "description": "AI-powered home search that scores, ranks, and explains listings based on your preferences.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create homescout",
+    "db:migrate": "wrangler d1 execute homescout --local --file=./schema.sql",
+    "db:migrate:remote": "wrangler d1 execute homescout --remote --file=./schema.sql"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "hono": "^4.12.12",
+    "wrangler": "^4.82.2"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260414.1",
+    "typescript": "^6.0.2"
+  }
+}

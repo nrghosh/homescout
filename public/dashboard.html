@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HomeScout — Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #fafafa; color: #1a1a1a; line-height: 1.6; }
+    .container { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
+    h1 { font-size: 24px; margin-bottom: 4px; }
+    .subtitle { color: #666; font-size: 14px; margin-bottom: 24px; }
+    .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .card h2 { font-size: 16px; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 8px 6px; background: #f5f5f5; font-weight: 600; font-size: 12px; }
+    td { padding: 8px 6px; border-bottom: 1px solid #f0f0f0; }
+    .score { font-weight: 700; }
+    .score-high { color: #2563eb; }
+    .score-mid { color: #d97706; }
+    .score-low { color: #999; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .explanation { font-size: 12px; color: #666; margin-top: 4px; }
+    .loading { text-align: center; padding: 48px; color: #888; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+    .tag-active { background: #dcfce7; color: #16a34a; }
+    .tag-pending { background: #fef3c7; color: #d97706; }
+    .tag-sold { background: #fee2e2; color: #dc2626; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>HomeScout</h1>
+    <p class="subtitle" id="subtitle">Loading your dashboard...</p>
+
+    <div id="content" class="loading">Loading...</div>
+  </div>
+
+  <script>
+    const userId = window.location.pathname.split('/').pop();
+
+    async function loadDashboard() {
+      try {
+        const res = await fetch(`/api/dashboard/${userId}`);
+        if (!res.ok) throw new Error('Not found');
+        const data = await res.json();
+
+        document.getElementById('subtitle').textContent =
+          `${data.listings.length} listings scored for ${data.user.email}`;
+
+        let html = '<div class="card"><h2>Your Top Listings</h2><table>';
+        html += '<tr><th>#</th><th>Address</th><th>Price</th><th>Bd/Ba</th><th>Area</th><th>Score</th></tr>';
+
+        data.listings.forEach((l, i) => {
+          const scoreClass = l.score >= 85 ? 'score-high' : l.score >= 70 ? 'score-mid' : 'score-low';
+          html += `<tr>
+            <td>${i + 1}</td>
+            <td><a href="${l.url || '#'}" target="_blank">${l.address?.split(',')[0] || '—'}</a>
+              ${l.explanation ? `<div class="explanation">${l.explanation}</div>` : ''}
+            </td>
+            <td>$${l.price ? (l.price / 1000).toFixed(0) + 'K' : '?'}</td>
+            <td>${l.bedrooms || '?'}/${l.bathrooms || '?'}</td>
+            <td>${l.neighborhood || '—'}</td>
+            <td class="score ${scoreClass}">${l.score}</td>
+          </tr>`;
+        });
+
+        html += '</table></div>';
+
+        if (data.scans && data.scans.length > 0) {
+          html += '<div class="card"><h2>Recent Scans</h2><table>';
+          html += '<tr><th>Date</th><th>New</th><th>Removed</th><th>Price Changes</th></tr>';
+          data.scans.forEach(s => {
+            html += `<tr>
+              <td>${s.scan_date}</td>
+              <td style="color:#16a34a;">${s.new_listings > 0 ? '+' + s.new_listings : '0'}</td>
+              <td style="color:#dc2626;">${s.removed_listings > 0 ? '-' + s.removed_listings : '0'}</td>
+              <td>${s.price_changes || 0}</td>
+            </tr>`;
+          });
+          html += '</table></div>';
+        }
+
+        document.getElementById('content').innerHTML = html;
+      } catch (err) {
+        document.getElementById('content').innerHTML =
+          '<p style="text-align:center; color:#dc2626;">Dashboard not found. Check your email for the correct link.</p>';
+      }
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

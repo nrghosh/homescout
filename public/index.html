@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HomeScout — AI Home Search</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fafafa; color: #1a1a1a; line-height: 1.6; }
+    .container { max-width: 640px; margin: 0 auto; padding: 24px 16px; }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+    .subtitle { color: #666; font-size: 16px; margin-bottom: 32px; }
+    .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .card h2 { font-size: 18px; margin-bottom: 16px; }
+    label { display: block; font-weight: 500; margin-bottom: 6px; font-size: 14px; }
+    .hint { color: #888; font-size: 12px; margin-bottom: 12px; }
+    input[type="email"], select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; margin-bottom: 12px; }
+    input[type="email"]:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+    .range-row { display: flex; gap: 12px; margin-bottom: 12px; }
+    .range-row select { flex: 1; }
+    .neighborhoods { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+    .hood-item { display: flex; align-items: center; gap: 6px; font-size: 14px; padding: 4px; }
+    .hood-item input { accent-color: #2563eb; }
+    .group-label { font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; grid-column: 1 / -1; margin-top: 8px; }
+    .priority-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+    .priority-row:last-child { border-bottom: none; }
+    .priority-label { font-size: 14px; font-weight: 500; }
+    .priority-select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: white; }
+    .priority-select option[value="must_have"] { font-weight: bold; }
+    .btn { display: block; width: 100%; padding: 14px; background: #2563eb; color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+    .btn:hover { background: #1d4ed8; }
+    .btn:disabled { background: #93c5fd; cursor: not-allowed; }
+    .success { text-align: center; padding: 48px 24px; }
+    .success h2 { font-size: 24px; margin-bottom: 8px; }
+    .success p { color: #666; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>HomeScout</h1>
+    <p class="subtitle">AI-powered home search that scores and explains listings based on your priorities.</p>
+
+    <form id="form">
+      <!-- Email -->
+      <div class="card">
+        <h2>Your email</h2>
+        <input type="email" id="email" placeholder="you@example.com" required>
+        <p class="hint">You'll get a daily email with your top 10 scored listings.</p>
+      </div>
+
+      <!-- Neighborhoods -->
+      <div class="card">
+        <h2>Neighborhoods</h2>
+        <p class="hint">Select the areas you're interested in.</p>
+        <div class="neighborhoods" id="neighborhoods">
+          <div class="group-label">Popular</div>
+          <label class="hood-item"><input type="checkbox" name="hood" value="Noe Valley" checked> Noe Valley</label>
+          <label class="hood-item"><input type="checkbox" name="hood" value="Cole Valley" checked> Cole Valley</label>
+          <label class="hood-item"><input type="checkbox" name="hood" value="Inner Sunset"> Inner Sunset</label>
+          <label class="hood-item"><input type="checkbox" name="hood" value="Corona Heights"> Corona Heights</label>
+          <label class="hood-item"><input type="checkbox" name="hood" value="Dolores Heights"> Dolores Heights</label>
+          <label class="hood-item"><input type="checkbox" name="hood" value="Glen Park"> Glen Park</label>
+          <div class="group-label">More</div>
+          <label class="hood-item"><input type="checkbox" name="hood" value="Duboce Triangle"> Duboce Triangle</label>
+          <label class="hood-item"><input type="checkbox" name="hood" value="The Castro"> The Castro</label>
+          <label class="hood-item"><input type="checkbox" name="hood" value="Eureka Valley"> Eureka Valley</label>
+          <label class="hood-item"><input type="checkbox" name="hood" value="Ashbury Heights"> Ashbury Heights</label>
+          <label class="hood-item"><input type="checkbox" name="hood" value="Mission Dolores"> Mission Dolores</label>
+          <label class="hood-item"><input type="checkbox" name="hood" value="Buena Vista"> Buena Vista</label>
+        </div>
+      </div>
+
+      <!-- Basics -->
+      <div class="card">
+        <h2>Basics</h2>
+        <label>Price range</label>
+        <div class="range-row">
+          <select id="price_min">
+            <option value="500000">$500K</option>
+            <option value="750000">$750K</option>
+            <option value="1000000" selected>$1M</option>
+            <option value="1250000">$1.25M</option>
+            <option value="1500000">$1.5M</option>
+          </select>
+          <select id="price_max">
+            <option value="1500000">$1.5M</option>
+            <option value="2000000">$2M</option>
+            <option value="2500000">$2.5M</option>
+            <option value="3000000" selected>$3M</option>
+            <option value="4000000">$4M</option>
+            <option value="5000000">$5M</option>
+          </select>
+        </div>
+        <label>Minimum bedrooms</label>
+        <select id="beds_min">
+          <option value="1">1+</option>
+          <option value="2" selected>2+</option>
+          <option value="3">3+</option>
+          <option value="4">4+</option>
+        </select>
+        <label>Minimum bathrooms</label>
+        <select id="baths_min">
+          <option value="1">1+</option>
+          <option value="1.5">1.5+</option>
+          <option value="2" selected>2+</option>
+          <option value="2.5">2.5+</option>
+          <option value="3">3+</option>
+        </select>
+        <label>Minimum sqft</label>
+        <select id="sqft_min">
+          <option value="0">No minimum</option>
+          <option value="800">800+</option>
+          <option value="1000">1,000+</option>
+          <option value="1200">1,200+</option>
+          <option value="1400">1,400+</option>
+          <option value="1600" selected>1,600+</option>
+          <option value="1800">1,800+</option>
+          <option value="2000">2,000+</option>
+        </select>
+      </div>
+
+      <!-- Priorities -->
+      <div class="card">
+        <h2>What matters to you?</h2>
+        <p class="hint">Drag each into a priority bucket. "Must Have" items become hard filters — listings that don't meet them are excluded.</p>
+
+        <div id="priorities">
+          <div class="priority-row">
+            <span class="priority-label">Neighborhood match</span>
+            <select class="priority-select" data-key="neighborhood">
+              <option value="must_have">Must Have</option>
+              <option value="important" selected>Important</option>
+              <option value="nice_to_have">Nice to Have</option>
+              <option value="not_important">Not Important</option>
+            </select>
+          </div>
+          <div class="priority-row">
+            <span class="priority-label">Within price range</span>
+            <select class="priority-select" data-key="price">
+              <option value="must_have" selected>Must Have</option>
+              <option value="important">Important</option>
+              <option value="nice_to_have">Nice to Have</option>
+              <option value="not_important">Not Important</option>
+            </select>
+          </div>
+          <div class="priority-row">
+            <span class="priority-label">Single-family home</span>
+            <select class="priority-select" data-key="property_type">
+              <option value="must_have">Must Have</option>
+              <option value="important" selected>Important</option>
+              <option value="nice_to_have">Nice to Have</option>
+              <option value="not_important">Not Important</option>
+            </select>
+          </div>
+          <div class="priority-row">
+            <span class="priority-label">Space (sqft)</span>
+            <select class="priority-select" data-key="size">
+              <option value="must_have">Must Have</option>
+              <option value="important" selected>Important</option>
+              <option value="nice_to_have">Nice to Have</option>
+              <option value="not_important">Not Important</option>
+            </select>
+          </div>
+          <div class="priority-row">
+            <span class="priority-label">Bedrooms</span>
+            <select class="priority-select" data-key="bedrooms">
+              <option value="must_have" selected>Must Have</option>
+              <option value="important">Important</option>
+              <option value="nice_to_have">Nice to Have</option>
+              <option value="not_important">Not Important</option>
+            </select>
+          </div>
+          <div class="priority-row">
+            <span class="priority-label">Bathrooms</span>
+            <select class="priority-select" data-key="bathrooms">
+              <option value="must_have" selected>Must Have</option>
+              <option value="important">Important</option>
+              <option value="nice_to_have">Nice to Have</option>
+              <option value="not_important">Not Important</option>
+            </select>
+          </div>
+          <div class="priority-row">
+            <span class="priority-label">Parking</span>
+            <select class="priority-select" data-key="parking">
+              <option value="must_have">Must Have</option>
+              <option value="important">Important</option>
+              <option value="nice_to_have" selected>Nice to Have</option>
+              <option value="not_important">Not Important</option>
+            </select>
+          </div>
+          <div class="priority-row">
+            <span class="priority-label">Walkability / Transit</span>
+            <select class="priority-select" data-key="walkability">
+              <option value="must_have">Must Have</option>
+              <option value="important">Important</option>
+              <option value="nice_to_have" selected>Nice to Have</option>
+              <option value="not_important">Not Important</option>
+            </select>
+          </div>
+          <div class="priority-row">
+            <span class="priority-label">Move-in ready</span>
+            <select class="priority-select" data-key="condition">
+              <option value="must_have">Must Have</option>
+              <option value="important">Important</option>
+              <option value="nice_to_have" selected>Nice to Have</option>
+              <option value="not_important">Not Important</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn" id="submit-btn">Start My Daily Scan</button>
+    </form>
+
+    <div id="success" class="success hidden">
+      <h2>You're all set!</h2>
+      <p>Your first scored listing email will arrive tomorrow morning.</p>
+      <p style="margin-top: 16px; font-size: 14px; color: #888;">We'll scan Redfin, Zillow, and Compass daily and score every listing against your preferences.</p>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.textContent = 'Setting up...';
+
+      const email = document.getElementById('email').value;
+      const neighborhoods = [...document.querySelectorAll('input[name="hood"]:checked')].map(el => el.value);
+      const priorities = {};
+      document.querySelectorAll('.priority-select').forEach(el => {
+        priorities[el.dataset.key] = el.value;
+      });
+
+      const preferences = {
+        neighborhoods,
+        price_min: parseInt(document.getElementById('price_min').value),
+        price_max: parseInt(document.getElementById('price_max').value),
+        beds_min: parseFloat(document.getElementById('beds_min').value),
+        baths_min: parseFloat(document.getElementById('baths_min').value),
+        sqft_min: parseInt(document.getElementById('sqft_min').value),
+        priorities,
+      };
+
+      try {
+        const res = await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, preferences, city: 'san_francisco' }),
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          document.getElementById('form').classList.add('hidden');
+          document.getElementById('success').classList.remove('hidden');
+        } else {
+          alert('Error: ' + (data.error || 'Something went wrong'));
+          btn.disabled = false;
+          btn.textContent = 'Start My Daily Scan';
+        }
+      } catch (err) {
+        alert('Network error. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Start My Daily Scan';
+      }
+    });
+  </script>
+</body>
+</html>
