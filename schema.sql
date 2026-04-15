@@ -94,3 +94,27 @@ CREATE INDEX IF NOT EXISTS idx_price_history_listing ON price_history(listing_id
 CREATE INDEX IF NOT EXISTS idx_explanation_cache_created ON explanation_cache(created_at);
 CREATE INDEX IF NOT EXISTS idx_preview_cache_created ON preview_cache(created_at);
 CREATE INDEX IF NOT EXISTS idx_source_attribution_listing ON source_attribution(listing_id);
+
+-- Feature flags — runtime config without redeploys
+CREATE TABLE IF NOT EXISTS feature_flags (
+  key TEXT PRIMARY KEY,
+  -- "value" is the default. For bucketed/rollout, see rollout_percent + allow_users
+  value TEXT NOT NULL DEFAULT 'off',  -- 'on', 'off', or arbitrary string
+  rollout_percent INTEGER NOT NULL DEFAULT 0,  -- 0-100: hash(user_id) % 100 < rollout_percent => on
+  allow_users TEXT,  -- JSON array of user_ids that always get 'on' (internal testing)
+  description TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Seed initial flags (all off except listed)
+INSERT OR IGNORE INTO feature_flags (key, value, rollout_percent, description) VALUES
+  ('LOG_SOURCE_SNAPSHOTS',    'on',  100, 'Append every scrape to listing_source_snapshots log'),
+  ('WIZARD_STEPS_3',          'off', 0,   'P0.3: compress wizard from 4 steps to 3'),
+  ('LOCK_MODE_SOFT',          'off', 0,   'P0.4: show addresses, gate explanations'),
+  ('SHOW_FRESHNESS_LABELS',   'off', 0,   'P0.5: show "Verified active N min ago" on each listing'),
+  ('EMAIL_CHANGES_FIRST',     'off', 0,   'P0.6: put status changes at top of daily email'),
+  ('ENRICHMENT_MODE',         'sync', 0,  'P1.1: sync, async, or hybrid'),
+  ('DEFAULT_CADENCE',         'daily', 0, 'P1.2: daily, weekly, or instant'),
+  ('COMPARE_VIEW',            'off', 0,   'P1.3: mobile compare 2-3 listings'),
+  ('AI_CANNED_PROMPTS',       'off', 0,   'P1.4: 3 canned AI prompts per listing'),
+  ('EXPLANATION_BACKEND',     'llama', 0, 'P1.5: llama | template — A/B LLM vs template');

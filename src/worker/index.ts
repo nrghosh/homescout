@@ -4,6 +4,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { scoreListing, scoreListingRuleBased } from "./scorer";
 import { verifyListings } from "./verify";
 import { enrichListing, enrichBatch } from "./enrich";
+import { getFlag, isFlagOn } from "./flags";
 import { scrapeNeighborhood } from "./scraper";
 import { sendDailyEmail } from "./email";
 import {
@@ -262,6 +263,57 @@ app.get("/api/dashboard/:userId", async (c) => {
     listings: scores.results,
     scans: recentScans.results,
   });
+});
+
+// Feature flag read (public — any user can see current flag state for their ID)
+app.get("/api/flags/:userId?", async (c) => {
+  const userId = c.req.param("userId");
+  const flags = await c.env.DB.prepare(
+    "SELECT key, value, rollout_percent, description FROM feature_flags"
+  ).all();
+
+  const resolved: Record<string, string> = {};
+  for (const f of flags.results as any[]) {
+    resolved[f.key] = await getFlag(c.env as any, f.key, userId);
+  }
+  return c.json({ flags: resolved, meta: flags.results });
+});
+
+// Admin: toggle a flag (requires ADMIN_KEY header match)
+app.post("/api/flags/:key", async (c) => {
+  const adminKey = c.req.header("x-admin-key");
+  const expected = (c.env as any).ADMIN_KEY;
+  if (!expected || adminKey !== expected) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+
+  const key = c.req.param("key");
+  const body = await c.req.json();
+  const { value, rollout_percent, allow_users } = body;
+
+  if (typeof value !== "string") return c.json({ error: "value required" }, 400);
+  if (rollout_percent != null && (typeof rollout_percent !== "number" || rollout_percent < 0 || rollout_percent > 100)) {
+    return c.json({ error: "rollout_percent must be 0-100" }, 400);
+  }
+
+  await c.env.DB.prepare(
+    `INSERT INTO feature_flags (key, value, rollout_percent, allow_users, updated_at)
+     VALUES (?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET
+       value = excluded.value,
+       rollout_percent = COALESCE(excluded.rollout_percent, rollout_percent),
+       allow_users = COALESCE(excluded.allow_users, allow_users),
+       updated_at = datetime('now')`
+  )
+    .bind(
+      key,
+      value,
+      rollout_percent ?? 0,
+      allow_users ? JSON.stringify(allow_users) : null
+    )
+    .run();
+
+  return c.json({ ok: true, key, value, rollout_percent });
 });
 
 // Debug: inspect what scraper sees for a single neighborhood
