@@ -171,7 +171,10 @@ app.post("/api/preview", async (c) => {
     })
   );
 
-  // Locked top 3 — no LLM, no addresses
+  // Check flags for this session
+  const showFreshness = await isFlagOn(c.env as any, "SHOW_FRESHNESS_LABELS");
+
+  // Locked top 3 — no LLM, no addresses (but include freshness if flag on)
   const locked = ruleScored.slice(0, 3).map((l: any) => ({
     score: l.score,
     neighborhood: l.neighborhood,
@@ -179,6 +182,7 @@ app.post("/api/preview", async (c) => {
     bathrooms: l.bathrooms,
     property_type: l.property_type,
     price_range: l.price ? priceRange(l.price) : null,
+    last_checked: showFreshness ? l.last_checked : undefined,
     locked: true,
   }));
 

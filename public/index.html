@@ -249,6 +249,20 @@
     .listing-meta { color: var(--text-muted); font-size: 13px; display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
     .listing-meta strong { color: var(--text); }
     .listing-why { font-size: 13px; color: var(--text-muted); line-height: 1.5; padding-top: 10px; border-top: 1px solid var(--border); }
+    .freshness-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 3px 8px;
+      border-radius: 12px;
+      margin-top: 8px;
+      letter-spacing: 0.01em;
+    }
+    .freshness-badge.stale { color: var(--text-subtle); background: var(--surface-alt); }
 
     /* Locked listing */
     .listing-locked {
@@ -626,11 +640,14 @@
 
     function renderPreview(data) {
       const { total_matches, locked, visible } = data;
+      const allListings = [...(locked || []), ...(visible || [])];
+      const freshCount = allListings.filter(l => l.last_checked && daysAgo(l.last_checked) === 'today').length;
 
       let html = `
         <div class="preview-header">
           <div class="preview-count">${total_matches}</div>
           <div class="preview-count-label">listings match your criteria</div>
+          ${freshCount > 0 ? `<div style="margin-top: 8px; font-size: 13px; color: var(--accent);">✓ ${freshCount} verified active today</div>` : ''}
         </div>
       `;
 
@@ -674,7 +691,7 @@
                     <span>${l.neighborhood}</span>
                     <span>${formatType(l.property_type)}</span>
                   </div>
-                  ${l.last_checked ? `<div style="font-size: 11px; color: var(--text-subtle); margin-top: 4px;">Verified active ${daysAgo(l.last_checked)}</div>` : ''}
+                  ${l.last_checked ? `<div class="freshness-badge">✓ Verified active ${daysAgo(l.last_checked)}</div>` : ''}
                 </div>
                 <div class="listing-score ${l.score >= 85 ? 'high' : ''}">${l.score}</div>
               </div>
