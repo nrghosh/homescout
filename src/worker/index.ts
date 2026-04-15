@@ -263,6 +263,151 @@ app.get("/api/dashboard/:userId", async (c) => {
   });
 });
 
+// Debug: inspect what scraper sees for a single neighborhood
+app.get("/api/debug/scrape/:neighborhood", async (c) => {
+  const neighborhood = c.req.param("neighborhood").replace(/-/g, " ");
+  const listings = await scrapeNeighborhood(c.env.BROWSER, "san_francisco", neighborhood);
+  return c.json({ neighborhood, count: listings.length, listings: listings.slice(0, 3) });
+});
+
+app.get("/api/debug/parser/:neighborhood", async (c) => {
+  const slugs: Record<string, string> = {
+    "Cole-Valley": "605/CA/San-Francisco/Cole-Valley",
+  };
+  const slug = slugs[c.req.param("neighborhood")];
+  if (!slug) return c.json({ error: "no slug" });
+  const url = `https://www.redfin.com/neighborhood/${slug}/filter/property-type=house+condo+townhouse,min-beds=2,min-baths=2,min-price=1M,max-price=3M`;
+  const r = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36" },
+  } as any);
+  const html = await r.text();
+
+  const result: any = { htmlLen: html.length, strategies: [] };
+
+  // Strategy 1
+  const serverStateMatch = html.match(/<script[^>]*>__reactServerState\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/);
+  result.strategies.push({ name: "serverState_regex_match", found: !!serverStateMatch, len: serverStateMatch?.[1]?.length });
+
+  // Strategy 2: count JSON-LD with addresses
+  const jsonLdMatches = [...html.matchAll(/<script\s+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)];
+  let withAddress = 0;
+  let parsed = 0;
+  let extractedItems: any[] = [];
+  for (const match of jsonLdMatches) {
+    try {
+      const json = JSON.parse(match[1]);
+      parsed++;
+      const items = Array.isArray(json) ? json : json["@graph"] || [json];
+      const listingItem = items.find((it: any) => it && it.address && it.address.streetAddress);
+      if (listingItem) {
+        withAddress++;
+        extractedItems.push({ name: listingItem.name, url: listingItem.url, hasOffers: !!listingItem.offers });
+      }
+    } catch (e) {
+      result.strategies.push({ parse_error: String(e).slice(0, 100) });
+    }
+  }
+  result.strategies.push({ name: "jsonld", total: jsonLdMatches.length, parsed, withAddress, items: extractedItems });
+
+  return c.json(result);
+});
+
+app.get("/api/debug/jsonld/:neighborhood", async (c) => {
+  const slugs: Record<string, string> = {
+    "Cole-Valley": "605/CA/San-Francisco/Cole-Valley",
+    "Noe-Valley": "1838/CA/San-Francisco/Noe-Valley",
+  };
+  const slug = slugs[c.req.param("neighborhood")];
+  if (!slug) return c.json({ error: "no slug" });
+  const url = `https://www.redfin.com/neighborhood/${slug}/filter/property-type=house+condo+townhouse,min-beds=2,min-baths=2,min-price=1M,max-price=3M`;
+  const r = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36" },
+  } as any);
+  const html = await r.text();
+  const matches = [...html.matchAll(/<script\s+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)];
+  const blocks = matches.map((m, i) => {
+    try {
+      const parsed = JSON.parse(m[1]);
+      return { i, type: parsed["@type"] || (Array.isArray(parsed) ? "array" : "unknown"), preview: JSON.stringify(parsed).slice(0, 300) };
+    } catch (e) {
+      return { i, error: String(e), raw: m[1].slice(0, 200) };
+    }
+  });
+  return c.json({ count: blocks.length, blocks });
+});
+
+app.get("/api/debug/parse/:neighborhood", async (c) => {
+  const slugs: Record<string, string> = {
+    "Cole-Valley": "605/CA/San-Francisco/Cole-Valley",
+    "Noe-Valley": "1838/CA/San-Francisco/Noe-Valley",
+  };
+  const slug = slugs[c.req.param("neighborhood")];
+  if (!slug) return c.json({ error: "no slug" });
+  const url = `https://www.redfin.com/neighborhood/${slug}/filter/property-type=house+condo+townhouse,min-beds=2,min-baths=2,min-price=1M,max-price=3M`;
+  const r = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36" },
+  } as any);
+  const html = await r.text();
+
+  // Try different regex patterns for ServerState
+  const patterns = [
+    { name: "p1: window.__reactServerState=", re: /window\.__reactServerState\s*=\s*(\{[\s\S]*?\});/ },
+    { name: "p2: __reactServerState =", re: /__reactServerState\s*=\s*(\{[\s\S]*?\})\s*[,;<]/ },
+    { name: "p3: ServerState +/* anything", re: /__reactServerState[^=]*=\s*(\{[\s\S]+?\})\s*\n/ },
+  ];
+  const results: any = { url, status: r.status, htmlLen: html.length };
+  for (const p of patterns) {
+    const m = html.match(p.re);
+    results[p.name] = m ? `matched, ${m[1].length} chars` : "no match";
+  }
+
+  // Sample the area around __reactServerState
+  const idx = html.indexOf("__reactServerState");
+  if (idx > -1) {
+    results.serverStateContext = html.slice(idx, idx + 200);
+  }
+
+  // Count JSON-LD entries
+  const jsonLdMatches = html.match(/<script\s+type="application\/ld\+json"[^>]*>/g) || [];
+  results.jsonLdCount = jsonLdMatches.length;
+
+  // Count HomeCardContainer
+  const homeCardMatches = html.match(/HomeCardContainer/g) || [];
+  results.homeCardCount = homeCardMatches.length;
+
+  return c.json(results);
+});
+
+app.get("/api/debug/raw/:neighborhood", async (c) => {
+  const neighborhood = c.req.param("neighborhood").replace(/-/g, " ");
+  const slugs: Record<string, string> = {
+    "Cole Valley": "605/CA/San-Francisco/Cole-Valley",
+    "Noe Valley": "1838/CA/San-Francisco/Noe-Valley",
+  };
+  const slug = slugs[neighborhood];
+  if (!slug) return c.json({ error: "no slug" });
+  const url = `https://www.redfin.com/neighborhood/${slug}`;
+  try {
+    const r = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36",
+      },
+    });
+    const text = await r.text();
+    return c.json({
+      status: r.status,
+      length: text.length,
+      first500: text.slice(0, 500),
+      hasReactState: /__reactServerState/.test(text),
+      hasJsonLd: /application\/ld\+json/.test(text),
+      hasHomeCard: /HomeCardContainer/.test(text),
+    });
+  } catch (err) {
+    return c.json({ error: String(err) });
+  }
+});
+
 // Manual scan trigger (for testing, rate limited)
 app.post("/api/scan", async (c) => {
   const ip = clientKey(c);
@@ -328,7 +473,9 @@ function priceRange(price: number): string {
 
 async function runDailyScan(env: Bindings) {
   const city = "san_francisco";
+  const today = new Date().toISOString().slice(0, 10);
   let newCount = 0;
+  let removedCount = 0;
 
   const allNeighborhoods = [
     "Cole Valley",
@@ -345,17 +492,86 @@ async function runDailyScan(env: Bindings) {
     "Buena Vista",
   ];
 
+  // Track addresses seen in this scrape, so we can reconcile statuses after
+  const seenAddresses = new Set<string>();
+
   for (const hood of allNeighborhoods) {
     try {
       const listings = await scrapeNeighborhood(env.BROWSER, city, hood);
       for (const listing of listings) {
         const isNew = await upsertListing(env.DB, listing);
         if (isNew) newCount++;
+        seenAddresses.add(listing.address.toLowerCase().trim());
       }
     } catch (err) {
       console.error(`Scrape failed for ${hood}:`, err);
     }
   }
+
+  // Status reconciliation: any active listing NOT in today's scrape
+  // and last_checked > 24h ago gets re-verified via URL fetch.
+  // After 2 consecutive misses, mark as likely_sold.
+  if (seenAddresses.size > 5) {
+    // Only run reconciliation if scrape was meaningful (didn't fail silently)
+    const stale = await env.DB.prepare(
+      `SELECT id, address, url, raw_data FROM listings
+       WHERE city = ? AND status = 'active' AND last_checked < datetime('now', '-1 day')`
+    )
+      .bind(city)
+      .all();
+
+    for (const row of stale.results) {
+      const addr = String(row.address).toLowerCase().trim();
+      if (seenAddresses.has(addr)) continue; // Still on Redfin search
+
+      // Not seen — verify via URL
+      const verifyResult = await import("./verify").then((m) =>
+        m.verifyListing(String(row.url || ""))
+      );
+
+      if (verifyResult.status !== "active" && verifyResult.confidence === "high") {
+        await env.DB.prepare(
+          "UPDATE listings SET status = ?, last_checked = datetime('now') WHERE id = ?"
+        )
+          .bind(verifyResult.status, row.id)
+          .run();
+        removedCount++;
+      } else if (verifyResult.status === "unknown") {
+        // Track miss count in raw_data
+        const raw = JSON.parse(String(row.raw_data || "{}"));
+        const misses = (raw.scrape_misses || 0) + 1;
+        raw.scrape_misses = misses;
+
+        if (misses >= 2) {
+          await env.DB.prepare(
+            "UPDATE listings SET status = 'likely_sold', last_checked = datetime('now'), raw_data = ? WHERE id = ?"
+          )
+            .bind(JSON.stringify(raw), row.id)
+            .run();
+          removedCount++;
+        } else {
+          await env.DB.prepare(
+            "UPDATE listings SET raw_data = ? WHERE id = ?"
+          )
+            .bind(JSON.stringify(raw), row.id)
+            .run();
+        }
+      }
+    }
+  }
+
+  // Log the scan
+  await env.DB.prepare(
+    "INSERT INTO scan_log (city, scan_date, new_listings, removed_listings, summary) VALUES (?, ?, ?, ?, ?)"
+  )
+    .bind(
+      city,
+      today,
+      newCount,
+      removedCount,
+      JSON.stringify({ scraped_addresses: seenAddresses.size })
+    )
+    .run();
 
   const users = await getUsersForCity(env.DB, city);
   const activeListings = await getActiveListings(env.DB, city);
@@ -405,10 +621,10 @@ async function runDailyScan(env: Bindings) {
         user.email as string,
         user.id as string,
         topScores.results,
-        { newCount, removedCount: 0, priceChanges: 0 }
+        { newCount, removedCount, priceChanges: 0 }
       );
     }
   }
 
-  return { success: true, newCount, usersNotified: users.results.length };
+  return { success: true, newCount, removedCount, usersNotified: users.results.length };
 }
