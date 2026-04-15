@@ -651,25 +651,39 @@
         </div>
       `;
 
-      // Locked top 3
+      // Locked top 3 — two modes:
+      //   lock_target=address (hard): blur address, show price range only
+      //   lock_target=explanation (soft): show everything except the AI "why" — more trust-friendly
       if (locked.length > 0) {
-        html += '<div class="card-header" style="margin: 20px 0 12px;">Your top 3</div>';
+        const softMode = locked[0]?.lock_target === 'explanation';
+        html += `<div class="card-header" style="margin: 20px 0 12px;">Your top 3 ${softMode ? '— sign up to see why each scored high' : ''}</div>`;
         locked.forEach((l, i) => {
+          const addressDisplay = softMode
+            ? `<a class="listing-addr" href="${l.url || '#'}" target="_blank" rel="noopener">${escapeHtml(l.address?.split(',')[0] || '—')}</a>`
+            : `<a class="listing-addr">████████ ████</a>`;
+          const priceDisplay = softMode
+            ? `<span><strong>$${formatPrice(l.price)}</strong></span>`
+            : `<span><strong>${l.price_range || '—'}</strong></span>`;
+          const extraMeta = softMode && l.sqft ? `<span>${l.sqft.toLocaleString()} sqft</span>` : '';
+
           html += `
-            <div class="listing listing-locked">
-              <span class="locked-badge">Locked</span>
+            <div class="listing ${softMode ? '' : 'listing-locked'}">
+              ${!softMode ? '<span class="locked-badge">Locked</span>' : ''}
               <div class="listing-top">
-                <div>
-                  <a class="listing-addr">████████ ████</a>
+                <div style="flex: 1; min-width: 0;">
+                  ${addressDisplay}
                   <div class="listing-meta" style="margin-top: 6px;">
-                    <span><strong>${l.price_range || '—'}</strong></span>
+                    ${priceDisplay}
                     <span>${l.bedrooms}bd / ${l.bathrooms}ba</span>
+                    ${extraMeta}
                     <span>${l.neighborhood}</span>
                     <span>${formatType(l.property_type)}</span>
                   </div>
+                  ${softMode && l.last_checked ? `<div class="freshness-badge">✓ Verified active ${daysAgo(l.last_checked)}</div>` : ''}
                 </div>
                 <div class="listing-score ${l.score >= 85 ? 'high' : ''}">${l.score}</div>
               </div>
+              ${softMode ? `<div class="listing-why" style="color: var(--text-subtle); font-style: italic;">🔒 Unlock "why this scored ${l.score} for you" with email signup below</div>` : ''}
             </div>
           `;
         });
