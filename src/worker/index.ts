@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { scoreListing, scoreListingRuleBased } from "./scorer";
 import { verifyListings } from "./verify";
+import { enrichListing, enrichBatch } from "./enrich";
 import { scrapeNeighborhood } from "./scraper";
 import { sendDailyEmail } from "./email";
 import {
@@ -408,6 +409,33 @@ app.get("/api/debug/raw/:neighborhood", async (c) => {
   }
 });
 
+// Manual enrichment trigger — fill missing price/baths from multiple sources
+app.post("/api/enrich", async (c) => {
+  const ip = clientKey(c);
+  if (!checkRateLimit(`enrich:${ip}`, 3, 3600_000)) {
+    return c.json({ error: "Enrichment is rate-limited to 3/hour" }, 429);
+  }
+
+  // Find active listings that are missing price OR bathrooms
+  const incomplete = await c.env.DB.prepare(
+    `SELECT id, address, url, price, bathrooms FROM listings
+     WHERE city = 'san_francisco' AND status = 'active' AND url != ''
+     AND (price IS NULL OR bathrooms IS NULL)
+     LIMIT 20`
+  ).all();
+
+  let updated = 0;
+  for (const row of incomplete.results) {
+    const did = await enrichAndUpdateDB(c.env, row as any);
+    if (did) updated++;
+  }
+
+  return c.json({
+    examined: incomplete.results.length,
+    updated,
+  });
+});
+
 // Manual scan trigger (for testing, rate limited)
 app.post("/api/scan", async (c) => {
   const ip = clientKey(c);
@@ -432,6 +460,77 @@ export default {
 };
 
 // --- Helpers ---
+
+async function enrichAndUpdateDB(
+  env: Bindings,
+  listing: { id: string; address: string; url?: string; price?: number | null; bathrooms?: number | null }
+): Promise<boolean> {
+  // Only enrich if we're missing key fields
+  if (listing.price != null && listing.bathrooms != null) return false;
+
+  const enriched = await enrichListing({
+    id: listing.id,
+    address: listing.address,
+    url: listing.url,
+    price: listing.price,
+    bathrooms: listing.bathrooms,
+  } as any);
+
+  // Update listing with any new fields
+  const updates: string[] = [];
+  const binds: any[] = [];
+
+  if (enriched.price != null && enriched.price !== listing.price) {
+    updates.push("price = ?");
+    binds.push(enriched.price);
+  }
+  if (enriched.bathrooms != null && enriched.bathrooms !== listing.bathrooms) {
+    updates.push("bathrooms = ?");
+    binds.push(enriched.bathrooms);
+  }
+  if (enriched.sqft != null) {
+    updates.push("sqft = COALESCE(sqft, ?)");
+    binds.push(enriched.sqft);
+  }
+  if (enriched.status) {
+    updates.push("status = ?");
+    binds.push(enriched.status);
+  }
+  if (enriched.parking != null) {
+    updates.push("parking = COALESCE(parking, ?)");
+    binds.push(enriched.parking ? 1 : 0);
+  }
+
+  if (updates.length > 0) {
+    updates.push("last_checked = datetime('now')");
+    binds.push(listing.id);
+    await env.DB.prepare(
+      `UPDATE listings SET ${updates.join(", ")} WHERE id = ?`
+    )
+      .bind(...binds)
+      .run();
+
+    // Record source attribution for each field
+    for (const [field, meta] of Object.entries(enriched._sources || {})) {
+      await env.DB.prepare(
+        `INSERT OR REPLACE INTO source_attribution
+         (listing_id, field, source, value, confidence, fetched_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          listing.id,
+          field,
+          meta.source,
+          String((enriched as any)[field] ?? ""),
+          meta.confidence,
+          meta.fetched_at
+        )
+        .run();
+    }
+    return true;
+  }
+  return false;
+}
 
 function shouldReVerify(lastChecked: string | null | undefined): boolean {
   if (!lastChecked) return true;
@@ -560,6 +659,23 @@ async function runDailyScan(env: Bindings) {
     }
   }
 
+  // Enrichment pass — fill missing price/baths from multiple sources
+  // Run on all active listings with missing data, in batches of 20
+  let enrichedCount = 0;
+  const incomplete = await env.DB.prepare(
+    `SELECT id, address, url, price, bathrooms FROM listings
+     WHERE city = ? AND status = 'active' AND url != ''
+     AND (price IS NULL OR bathrooms IS NULL)
+     LIMIT 30`
+  )
+    .bind(city)
+    .all();
+
+  for (const row of incomplete.results) {
+    const did = await enrichAndUpdateDB(env, row as any);
+    if (did) enrichedCount++;
+  }
+
   // Log the scan
   await env.DB.prepare(
     "INSERT INTO scan_log (city, scan_date, new_listings, removed_listings, summary) VALUES (?, ?, ?, ?, ?)"
@@ -569,7 +685,10 @@ async function runDailyScan(env: Bindings) {
       today,
       newCount,
       removedCount,
-      JSON.stringify({ scraped_addresses: seenAddresses.size })
+      JSON.stringify({
+        scraped_addresses: seenAddresses.size,
+        enriched: enrichedCount,
+      })
     )
     .run();
 

@@ -76,9 +76,21 @@ CREATE TABLE IF NOT EXISTS preview_cache (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Track which source provided each field + when (for conflict resolution + transparency)
+CREATE TABLE IF NOT EXISTS source_attribution (
+  listing_id TEXT NOT NULL,
+  field TEXT NOT NULL,
+  source TEXT NOT NULL,
+  value TEXT,
+  confidence TEXT,
+  fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (listing_id, field)
+);
+
 CREATE INDEX IF NOT EXISTS idx_listings_status ON listings(status, city);
 CREATE INDEX IF NOT EXISTS idx_listings_neighborhood ON listings(neighborhood, status);
 CREATE INDEX IF NOT EXISTS idx_user_scores_user ON user_scores(user_id, score DESC);
 CREATE INDEX IF NOT EXISTS idx_price_history_listing ON price_history(listing_id, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_explanation_cache_created ON explanation_cache(created_at);
 CREATE INDEX IF NOT EXISTS idx_preview_cache_created ON preview_cache(created_at);
+CREATE INDEX IF NOT EXISTS idx_source_attribution_listing ON source_attribution(listing_id);
