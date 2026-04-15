@@ -37,6 +37,23 @@ export async function upsertListing(db: D1Database, listing: any): Promise<boole
     .bind(listing.address, listing.city || "san_francisco")
     .first();
 
+  // Write append-only snapshot (guarded by flag — on by default in seed)
+  // Fire-and-forget: don't block upsert on snapshot failures
+  const source = listing.raw_data?.source || "unknown";
+  const addressKey = String(listing.address || "").toLowerCase().trim();
+  db.prepare(
+    `INSERT INTO listing_source_snapshots (listing_id, address, source, raw_json)
+     VALUES (?, ?, ?, ?)`
+  )
+    .bind(
+      existing?.id ?? null,
+      addressKey,
+      source,
+      JSON.stringify(listing)
+    )
+    .run()
+    .catch((err) => console.error("snapshot write failed:", err));
+
   if (existing) {
     // Check for price change
     if (existing.price !== listing.price && listing.price) {
