@@ -173,18 +173,39 @@ app.post("/api/preview", async (c) => {
 
   // Check flags for this session
   const showFreshness = await isFlagOn(c.env as any, "SHOW_FRESHNESS_LABELS");
+  const softLock = await isFlagOn(c.env as any, "LOCK_MODE_SOFT");
 
-  // Locked top 3 — no LLM, no addresses (but include freshness if flag on)
-  const locked = ruleScored.slice(0, 3).map((l: any) => ({
-    score: l.score,
-    neighborhood: l.neighborhood,
-    bedrooms: l.bedrooms,
-    bathrooms: l.bathrooms,
-    property_type: l.property_type,
-    price_range: l.price ? priceRange(l.price) : null,
-    last_checked: showFreshness ? l.last_checked : undefined,
-    locked: true,
-  }));
+  // Locked top 3 — softLock shows address + exact price but hides the explanation
+  // hardLock (old behavior) hides address + shows price range only
+  const locked = ruleScored.slice(0, 3).map((l: any) => {
+    if (softLock) {
+      return {
+        score: l.score,
+        address: l.address,
+        price: l.price,
+        bedrooms: l.bedrooms,
+        bathrooms: l.bathrooms,
+        sqft: l.sqft,
+        neighborhood: l.neighborhood,
+        property_type: l.property_type,
+        url: l.url,
+        last_checked: showFreshness ? l.last_checked : undefined,
+        locked: true,  // UI shows "unlock explanation + daily email"
+        lock_target: "explanation",
+      };
+    }
+    return {
+      score: l.score,
+      neighborhood: l.neighborhood,
+      bedrooms: l.bedrooms,
+      bathrooms: l.bathrooms,
+      property_type: l.property_type,
+      price_range: l.price ? priceRange(l.price) : null,
+      last_checked: showFreshness ? l.last_checked : undefined,
+      locked: true,
+      lock_target: "address",
+    };
+  });
 
   const response = {
     total_matches: ruleScored.length,
