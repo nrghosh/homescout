@@ -3,269 +3,753 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HomeScout — AI Home Search</title>
+  <meta name="description" content="AI-powered home search that scores and explains listings based on your priorities.">
+  <title>HomeScout — Smarter home search for San Francisco</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:wght@500;600;700&display=swap">
   <style>
+    :root {
+      --bg: #fafaf8;
+      --surface: #ffffff;
+      --surface-alt: #f5f4f0;
+      --border: #e8e5dd;
+      --border-strong: #d4cfc0;
+      --text: #1a1814;
+      --text-muted: #6b6757;
+      --text-subtle: #9a9686;
+      --accent: #2d5f3f;
+      --accent-hover: #244d33;
+      --accent-soft: #e8f1ec;
+      --warning: #b65c2a;
+      --danger: #9c2b2b;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+      --shadow: 0 4px 16px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-lg: 0 12px 32px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fafafa; color: #1a1a1a; line-height: 1.6; }
-    .container { max-width: 640px; margin: 0 auto; padding: 24px 16px; }
-    h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
-    .subtitle { color: #666; font-size: 16px; margin-bottom: 32px; }
-    .card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-    .card h2 { font-size: 18px; margin-bottom: 16px; }
-    label { display: block; font-weight: 500; margin-bottom: 6px; font-size: 14px; }
-    .hint { color: #888; font-size: 12px; margin-bottom: 12px; }
-    input[type="email"], select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; margin-bottom: 12px; }
-    input[type="email"]:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
-    .range-row { display: flex; gap: 12px; margin-bottom: 12px; }
-    .range-row select { flex: 1; }
-    .neighborhoods { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
-    .hood-item { display: flex; align-items: center; gap: 6px; font-size: 14px; padding: 4px; }
-    .hood-item input { accent-color: #2563eb; }
-    .group-label { font-size: 12px; font-weight: 600; color: #666; text-transform: uppercase; letter-spacing: 0.5px; grid-column: 1 / -1; margin-top: 8px; }
-    .priority-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
-    .priority-row:last-child { border-bottom: none; }
-    .priority-label { font-size: 14px; font-weight: 500; }
-    .priority-select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: white; }
-    .priority-select option[value="must_have"] { font-weight: bold; }
-    .btn { display: block; width: 100%; padding: 14px; background: #2563eb; color: white; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px; }
-    .btn:hover { background: #1d4ed8; }
-    .btn:disabled { background: #93c5fd; cursor: not-allowed; }
-    .success { text-align: center; padding: 48px 24px; }
-    .success h2 { font-size: 24px; margin-bottom: 8px; }
-    .success p { color: #666; }
-    .hidden { display: none; }
+    html, body { height: 100%; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      font-size: 15px;
+    }
+
+    .container { max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; }
+
+    /* Header */
+    .header { text-align: center; margin-bottom: 48px; }
+    .logo {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 32px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .logo .dot { color: var(--accent); }
+    .tagline { color: var(--text-muted); font-size: 15px; font-weight: 400; }
+
+    /* Progress indicator */
+    .progress { display: flex; justify-content: center; gap: 8px; margin: 0 auto 40px; max-width: 240px; }
+    .progress-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--border-strong);
+      transition: all 0.25s ease;
+    }
+    .progress-dot.active { background: var(--accent); width: 24px; border-radius: 4px; }
+    .progress-dot.done { background: var(--accent); }
+
+    /* Steps */
+    .step { display: none; }
+    .step.active { display: block; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    .step-header { margin-bottom: 24px; }
+    .step-title {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+    .step-subtitle { color: var(--text-muted); font-size: 15px; }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+    .card-header {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-subtle);
+      margin-bottom: 16px;
+    }
+
+    /* Form elements */
+    label { display: block; font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+    .field { margin-bottom: 18px; }
+    .field:last-child { margin-bottom: 0; }
+
+    input[type="email"], select {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: 15px;
+      background: var(--surface);
+      color: var(--text);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input[type="email"]:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    input[type="email"]::placeholder { color: var(--text-subtle); }
+    select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b6757' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* Neighborhood chips */
+    .hood-group { margin-bottom: 16px; }
+    .hood-group:last-child { margin-bottom: 0; }
+    .group-label { font-size: 12px; font-weight: 600; color: var(--text-subtle); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      position: relative; display: inline-flex; align-items: center;
+      padding: 8px 14px; border-radius: 999px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); }
+    .chip input { position: absolute; opacity: 0; }
+    .chip input:checked + span { font-weight: 600; }
+    .chip:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+    /* Priority picker */
+    .priority-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+      gap: 16px;
+    }
+    .priority-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .priority-row:first-child { padding-top: 0; }
+    .priority-label { font-size: 14px; font-weight: 500; color: var(--text); flex: 1; }
+    .priority-hint { font-size: 12px; color: var(--text-subtle); margin-top: 2px; }
+
+    .bucket-group { display: flex; gap: 4px; background: var(--surface-alt); padding: 3px; border-radius: 999px; }
+    .bucket-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      background: transparent;
+      border: none;
+      border-radius: 999px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .bucket-btn:hover { color: var(--text); }
+    .bucket-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); font-weight: 600; }
+    .bucket-btn.active[data-bucket="must_have"] { color: var(--danger); }
+    .bucket-btn.active[data-bucket="important"] { color: var(--warning); }
+    .bucket-btn.active[data-bucket="nice_to_have"] { color: var(--accent); }
+    .bucket-btn.active[data-bucket="not_important"] { color: var(--text-subtle); }
+
+    /* Buttons */
+    .btn-row { display: flex; gap: 12px; margin-top: 8px; }
+    .btn {
+      flex: 1;
+      padding: 14px 20px;
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: var(--shadow); }
+    .btn-primary:disabled { background: var(--border-strong); cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border-strong); }
+    .btn-secondary:hover { border-color: var(--text); }
+
+    /* Preview */
+    .preview-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .preview-count {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 48px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .preview-count-label { color: var(--text-muted); font-size: 14px; }
+
+    .listing {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 12px;
+      transition: border-color 0.15s;
+      position: relative;
+    }
+    .listing:hover { border-color: var(--border-strong); }
+    .listing-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 12px; }
+    .listing-addr {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .listing-addr:hover { color: var(--accent); }
+    .listing-score {
+      flex-shrink: 0;
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 20px;
+      font-weight: 700;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .listing-score.high { background: var(--accent); color: white; }
+    .listing-meta { color: var(--text-muted); font-size: 13px; display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+    .listing-meta strong { color: var(--text); }
+    .listing-why { font-size: 13px; color: var(--text-muted); line-height: 1.5; padding-top: 10px; border-top: 1px solid var(--border); }
+
+    /* Locked listing */
+    .listing-locked {
+      background: linear-gradient(135deg, var(--surface) 0%, var(--surface-alt) 100%);
+      border-style: dashed;
+      position: relative;
+    }
+    .listing-locked .listing-addr {
+      filter: blur(6px);
+      pointer-events: none;
+      user-select: none;
+    }
+    .locked-badge {
+      position: absolute;
+      top: 14px; right: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .cta-card {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+      color: white;
+      padding: 28px;
+      border-radius: var(--radius);
+      text-align: center;
+      margin: 20px 0;
+    }
+    .cta-card h3 { font-family: 'Fraunces', Georgia, serif; font-size: 22px; margin-bottom: 6px; font-weight: 600; }
+    .cta-card p { font-size: 14px; opacity: 0.9; margin-bottom: 0; }
+
+    /* Success */
+    .success {
+      text-align: center;
+      padding: 48px 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .success-icon {
+      width: 56px; height: 56px;
+      background: var(--accent-soft);
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      font-size: 28px;
+    }
+    .success h2 { font-family: 'Fraunces', Georgia, serif; font-size: 24px; margin-bottom: 8px; font-weight: 600; }
+    .success p { color: var(--text-muted); font-size: 14px; max-width: 380px; margin: 6px auto; }
+
+    .hidden { display: none !important; }
+
+    /* Loading state */
+    .loader {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: -3px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error */
+    .error-msg {
+      color: var(--danger);
+      font-size: 13px;
+      margin-top: 8px;
+      padding: 10px 14px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: var(--radius-sm);
+    }
+
+    /* Mobile */
+    @media (max-width: 520px) {
+      .container { padding: 24px 16px 60px; }
+      .logo { font-size: 26px; }
+      .step-title { font-size: 22px; }
+      .preview-count { font-size: 36px; }
+      .row { grid-template-columns: 1fr; }
+      .priority-row { flex-direction: column; align-items: stretch; gap: 10px; }
+      .bucket-group { width: 100%; justify-content: space-between; }
+      .bucket-btn { flex: 1; text-align: center; }
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>HomeScout</h1>
-    <p class="subtitle">AI-powered home search that scores and explains listings based on your priorities.</p>
+    <header class="header">
+      <h1 class="logo">Home<span class="dot">.</span>Scout</h1>
+      <p class="tagline">Smarter home search for San Francisco</p>
+    </header>
 
-    <form id="form">
-      <!-- Email -->
-      <div class="card">
-        <h2>Your email</h2>
-        <input type="email" id="email" placeholder="you@example.com" required>
-        <p class="hint">You'll get a daily email with your top 10 scored listings.</p>
-      </div>
-
-      <!-- Neighborhoods -->
-      <div class="card">
-        <h2>Neighborhoods</h2>
-        <p class="hint">Select the areas you're interested in.</p>
-        <div class="neighborhoods" id="neighborhoods">
-          <div class="group-label">Popular</div>
-          <label class="hood-item"><input type="checkbox" name="hood" value="Noe Valley" checked> Noe Valley</label>
-          <label class="hood-item"><input type="checkbox" name="hood" value="Cole Valley" checked> Cole Valley</label>
-          <label class="hood-item"><input type="checkbox" name="hood" value="Inner Sunset"> Inner Sunset</label>
-          <label class="hood-item"><input type="checkbox" name="hood" value="Corona Heights"> Corona Heights</label>
-          <label class="hood-item"><input type="checkbox" name="hood" value="Dolores Heights"> Dolores Heights</label>
-          <label class="hood-item"><input type="checkbox" name="hood" value="Glen Park"> Glen Park</label>
-          <div class="group-label">More</div>
-          <label class="hood-item"><input type="checkbox" name="hood" value="Duboce Triangle"> Duboce Triangle</label>
-          <label class="hood-item"><input type="checkbox" name="hood" value="The Castro"> The Castro</label>
-          <label class="hood-item"><input type="checkbox" name="hood" value="Eureka Valley"> Eureka Valley</label>
-          <label class="hood-item"><input type="checkbox" name="hood" value="Ashbury Heights"> Ashbury Heights</label>
-          <label class="hood-item"><input type="checkbox" name="hood" value="Mission Dolores"> Mission Dolores</label>
-          <label class="hood-item"><input type="checkbox" name="hood" value="Buena Vista"> Buena Vista</label>
-        </div>
-      </div>
-
-      <!-- Basics -->
-      <div class="card">
-        <h2>Basics</h2>
-        <label>Price range</label>
-        <div class="range-row">
-          <select id="price_min">
-            <option value="500000">$500K</option>
-            <option value="750000">$750K</option>
-            <option value="1000000" selected>$1M</option>
-            <option value="1250000">$1.25M</option>
-            <option value="1500000">$1.5M</option>
-          </select>
-          <select id="price_max">
-            <option value="1500000">$1.5M</option>
-            <option value="2000000">$2M</option>
-            <option value="2500000">$2.5M</option>
-            <option value="3000000" selected>$3M</option>
-            <option value="4000000">$4M</option>
-            <option value="5000000">$5M</option>
-          </select>
-        </div>
-        <label>Minimum bedrooms</label>
-        <select id="beds_min">
-          <option value="1">1+</option>
-          <option value="2" selected>2+</option>
-          <option value="3">3+</option>
-          <option value="4">4+</option>
-        </select>
-        <label>Minimum bathrooms</label>
-        <select id="baths_min">
-          <option value="1">1+</option>
-          <option value="1.5">1.5+</option>
-          <option value="2" selected>2+</option>
-          <option value="2.5">2.5+</option>
-          <option value="3">3+</option>
-        </select>
-        <label>Minimum sqft</label>
-        <select id="sqft_min">
-          <option value="0">No minimum</option>
-          <option value="800">800+</option>
-          <option value="1000">1,000+</option>
-          <option value="1200">1,200+</option>
-          <option value="1400">1,400+</option>
-          <option value="1600" selected>1,600+</option>
-          <option value="1800">1,800+</option>
-          <option value="2000">2,000+</option>
-        </select>
-      </div>
-
-      <!-- Priorities -->
-      <div class="card">
-        <h2>What matters to you?</h2>
-        <p class="hint">Drag each into a priority bucket. "Must Have" items become hard filters — listings that don't meet them are excluded.</p>
-
-        <div id="priorities">
-          <div class="priority-row">
-            <span class="priority-label">Neighborhood match</span>
-            <select class="priority-select" data-key="neighborhood">
-              <option value="must_have">Must Have</option>
-              <option value="important" selected>Important</option>
-              <option value="nice_to_have">Nice to Have</option>
-              <option value="not_important">Not Important</option>
-            </select>
-          </div>
-          <div class="priority-row">
-            <span class="priority-label">Within price range</span>
-            <select class="priority-select" data-key="price">
-              <option value="must_have" selected>Must Have</option>
-              <option value="important">Important</option>
-              <option value="nice_to_have">Nice to Have</option>
-              <option value="not_important">Not Important</option>
-            </select>
-          </div>
-          <div class="priority-row">
-            <span class="priority-label">Single-family home</span>
-            <select class="priority-select" data-key="property_type">
-              <option value="must_have">Must Have</option>
-              <option value="important" selected>Important</option>
-              <option value="nice_to_have">Nice to Have</option>
-              <option value="not_important">Not Important</option>
-            </select>
-          </div>
-          <div class="priority-row">
-            <span class="priority-label">Space (sqft)</span>
-            <select class="priority-select" data-key="size">
-              <option value="must_have">Must Have</option>
-              <option value="important" selected>Important</option>
-              <option value="nice_to_have">Nice to Have</option>
-              <option value="not_important">Not Important</option>
-            </select>
-          </div>
-          <div class="priority-row">
-            <span class="priority-label">Bedrooms</span>
-            <select class="priority-select" data-key="bedrooms">
-              <option value="must_have" selected>Must Have</option>
-              <option value="important">Important</option>
-              <option value="nice_to_have">Nice to Have</option>
-              <option value="not_important">Not Important</option>
-            </select>
-          </div>
-          <div class="priority-row">
-            <span class="priority-label">Bathrooms</span>
-            <select class="priority-select" data-key="bathrooms">
-              <option value="must_have" selected>Must Have</option>
-              <option value="important">Important</option>
-              <option value="nice_to_have">Nice to Have</option>
-              <option value="not_important">Not Important</option>
-            </select>
-          </div>
-          <div class="priority-row">
-            <span class="priority-label">Parking</span>
-            <select class="priority-select" data-key="parking">
-              <option value="must_have">Must Have</option>
-              <option value="important">Important</option>
-              <option value="nice_to_have" selected>Nice to Have</option>
-              <option value="not_important">Not Important</option>
-            </select>
-          </div>
-          <div class="priority-row">
-            <span class="priority-label">Walkability / Transit</span>
-            <select class="priority-select" data-key="walkability">
-              <option value="must_have">Must Have</option>
-              <option value="important">Important</option>
-              <option value="nice_to_have" selected>Nice to Have</option>
-              <option value="not_important">Not Important</option>
-            </select>
-          </div>
-          <div class="priority-row">
-            <span class="priority-label">Move-in ready</span>
-            <select class="priority-select" data-key="condition">
-              <option value="must_have">Must Have</option>
-              <option value="important">Important</option>
-              <option value="nice_to_have" selected>Nice to Have</option>
-              <option value="not_important">Not Important</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <button type="submit" class="btn" id="submit-btn">Start My Daily Scan</button>
-    </form>
-
-    <div id="success" class="success hidden">
-      <h2>You're all set!</h2>
-      <p>Your first scored listing email will arrive tomorrow morning.</p>
-      <p style="margin-top: 16px; font-size: 14px; color: #888;">We'll scan Redfin, Zillow, and Compass daily and score every listing against your preferences.</p>
+    <div class="progress" id="progress">
+      <div class="progress-dot active" data-step="1"></div>
+      <div class="progress-dot" data-step="2"></div>
+      <div class="progress-dot" data-step="3"></div>
+      <div class="progress-dot" data-step="4"></div>
     </div>
+
+    <!-- Step 1: Basics -->
+    <section class="step active" data-step="1">
+      <div class="step-header">
+        <h2 class="step-title">What are you looking for?</h2>
+        <p class="step-subtitle">We'll scan Redfin, Zillow, and Compass daily and score every listing against what matters to you.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">The basics</div>
+        <div class="field">
+          <label>Price range</label>
+          <div class="row">
+            <select id="price_min">
+              <option value="500000">$500K</option>
+              <option value="750000">$750K</option>
+              <option value="1000000" selected>$1M</option>
+              <option value="1250000">$1.25M</option>
+              <option value="1500000">$1.5M</option>
+            </select>
+            <select id="price_max">
+              <option value="1500000">$1.5M</option>
+              <option value="2000000">$2M</option>
+              <option value="2500000">$2.5M</option>
+              <option value="3000000" selected>$3M</option>
+              <option value="4000000">$4M</option>
+              <option value="5000000">$5M</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Bedrooms</label>
+          <select id="beds_min">
+            <option value="1">1+</option>
+            <option value="2" selected>2+</option>
+            <option value="3">3+</option>
+            <option value="4">4+</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Bathrooms</label>
+          <select id="baths_min">
+            <option value="1">1+</option>
+            <option value="1.5">1.5+</option>
+            <option value="2" selected>2+</option>
+            <option value="2.5">2.5+</option>
+            <option value="3">3+</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Minimum square footage</label>
+          <select id="sqft_min">
+            <option value="0">No minimum</option>
+            <option value="800">800+</option>
+            <option value="1000">1,000+</option>
+            <option value="1200">1,200+</option>
+            <option value="1400">1,400+</option>
+            <option value="1600" selected>1,600+</option>
+            <option value="1800">1,800+</option>
+            <option value="2000">2,000+</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="goToStep(2)">Continue</button>
+      </div>
+    </section>
+
+    <!-- Step 2: Neighborhoods -->
+    <section class="step" data-step="2">
+      <div class="step-header">
+        <h2 class="step-title">Which neighborhoods?</h2>
+        <p class="step-subtitle">Select the areas you'd consider. You can change this later.</p>
+      </div>
+
+      <div class="card">
+        <div class="hood-group">
+          <div class="group-label">Popular in SF</div>
+          <div class="chips">
+            <label class="chip"><input type="checkbox" name="hood" value="Noe Valley" checked><span>Noe Valley</span></label>
+            <label class="chip"><input type="checkbox" name="hood" value="Cole Valley" checked><span>Cole Valley</span></label>
+            <label class="chip"><input type="checkbox" name="hood" value="Inner Sunset"><span>Inner Sunset</span></label>
+            <label class="chip"><input type="checkbox" name="hood" value="Dolores Heights"><span>Dolores Heights</span></label>
+            <label class="chip"><input type="checkbox" name="hood" value="Corona Heights"><span>Corona Heights</span></label>
+            <label class="chip"><input type="checkbox" name="hood" value="Glen Park"><span>Glen Park</span></label>
+          </div>
+        </div>
+        <div class="hood-group">
+          <div class="group-label">Also consider</div>
+          <div class="chips">
+            <label class="chip"><input type="checkbox" name="hood" value="Duboce Triangle"><span>Duboce Triangle</span></label>
+            <label class="chip"><input type="checkbox" name="hood" value="The Castro"><span>The Castro</span></label>
+            <label class="chip"><input type="checkbox" name="hood" value="Eureka Valley"><span>Eureka Valley</span></label>
+            <label class="chip"><input type="checkbox" name="hood" value="Ashbury Heights"><span>Ashbury Heights</span></label>
+            <label class="chip"><input type="checkbox" name="hood" value="Mission Dolores"><span>Mission Dolores</span></label>
+            <label class="chip"><input type="checkbox" name="hood" value="Buena Vista"><span>Buena Vista</span></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToStep(1)">Back</button>
+        <button class="btn btn-primary" onclick="goToStep(3)">Continue</button>
+      </div>
+    </section>
+
+    <!-- Step 3: Priorities -->
+    <section class="step" data-step="3">
+      <div class="step-header">
+        <h2 class="step-title">What matters most?</h2>
+        <p class="step-subtitle">Drag each into a bucket. <strong>Must Have</strong> items become hard filters — listings that don't meet them are excluded.</p>
+      </div>
+
+      <div class="card">
+        <div id="priorities"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="goToStep(2)">Back</button>
+        <button class="btn btn-primary" id="preview-btn" onclick="loadPreview()">Preview my matches</button>
+      </div>
+    </section>
+
+    <!-- Step 4: Preview + signup -->
+    <section class="step" data-step="4">
+      <div class="step-header">
+        <h2 class="step-title">Your matches</h2>
+        <p class="step-subtitle">Here's what we found today. Enter your email to unlock the top 3 and get daily updates.</p>
+      </div>
+
+      <div id="preview-content">
+        <div class="card" style="text-align: center; padding: 48px;">
+          <span class="loader"></span> Scoring listings with AI...
+        </div>
+      </div>
+
+      <div class="card hidden" id="signup-card">
+        <div class="card-header">Get daily updates</div>
+        <div class="field">
+          <label>Your email</label>
+          <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div id="error-container"></div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="goToStep(3)">Adjust</button>
+          <button class="btn btn-primary" id="submit-btn" onclick="submitForm()">Unlock top 3 + get daily email</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Success -->
+    <section class="step" data-step="5">
+      <div class="success">
+        <div class="success-icon">✓</div>
+        <h2>You're all set</h2>
+        <p>Your first scored email arrives tomorrow morning with your complete top 10 plus any changes.</p>
+        <p style="color: var(--text-subtle); font-size: 13px; margin-top: 16px;">We scan listings every day at 8am PT. No spam. Unsubscribe anytime.</p>
+      </div>
+    </section>
   </div>
 
   <script>
-    document.getElementById('form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById('submit-btn');
-      btn.disabled = true;
-      btn.textContent = 'Setting up...';
+    const PRIORITIES = [
+      { key: "neighborhood", label: "Neighborhood match", default: "important" },
+      { key: "price", label: "Within price range", hint: "Budget discipline", default: "must_have" },
+      { key: "bedrooms", label: "Bedrooms", default: "must_have" },
+      { key: "bathrooms", label: "Bathrooms", default: "must_have" },
+      { key: "property_type", label: "Single-family home", hint: "vs. condo/TIC", default: "important" },
+      { key: "size", label: "Space (sqft)", default: "important" },
+      { key: "parking", label: "Parking / garage", default: "nice_to_have" },
+      { key: "walkability", label: "Walkability & transit", default: "nice_to_have" },
+      { key: "condition", label: "Move-in ready", hint: "vs. fixer-upper", default: "nice_to_have" },
+    ];
 
-      const email = document.getElementById('email').value;
-      const neighborhoods = [...document.querySelectorAll('input[name="hood"]:checked')].map(el => el.value);
-      const priorities = {};
-      document.querySelectorAll('.priority-select').forEach(el => {
-        priorities[el.dataset.key] = el.value;
+    const BUCKETS = [
+      { value: "must_have", label: "Must Have" },
+      { value: "important", label: "Important" },
+      { value: "nice_to_have", label: "Nice" },
+      { value: "not_important", label: "Skip" },
+    ];
+
+    const state = {
+      step: 1,
+      priorities: Object.fromEntries(PRIORITIES.map(p => [p.key, p.default])),
+      preview: null,
+    };
+
+    // Render priority picker
+    const pContainer = document.getElementById('priorities');
+    pContainer.innerHTML = PRIORITIES.map(p => `
+      <div class="priority-row">
+        <div>
+          <div class="priority-label">${p.label}</div>
+          ${p.hint ? `<div class="priority-hint">${p.hint}</div>` : ''}
+        </div>
+        <div class="bucket-group" data-key="${p.key}">
+          ${BUCKETS.map(b => `
+            <button type="button" class="bucket-btn${p.default === b.value ? ' active' : ''}" data-bucket="${b.value}" onclick="setBucket('${p.key}', '${b.value}')">${b.label}</button>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+
+    function setBucket(key, bucket) {
+      state.priorities[key] = bucket;
+      const group = document.querySelector(`.bucket-group[data-key="${key}"]`);
+      group.querySelectorAll('.bucket-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.bucket === bucket);
       });
+    }
 
-      const preferences = {
+    function goToStep(n) {
+      document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+      document.querySelector(`.step[data-step="${n}"]`).classList.add('active');
+      document.querySelectorAll('.progress-dot').forEach((d, i) => {
+        d.classList.remove('active', 'done');
+        const step = i + 1;
+        if (step < n) d.classList.add('done');
+        else if (step === n) d.classList.add('active');
+      });
+      state.step = n;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function getPreferences() {
+      const neighborhoods = [...document.querySelectorAll('input[name="hood"]:checked')].map(el => el.value);
+      return {
         neighborhoods,
         price_min: parseInt(document.getElementById('price_min').value),
         price_max: parseInt(document.getElementById('price_max').value),
         beds_min: parseFloat(document.getElementById('beds_min').value),
         baths_min: parseFloat(document.getElementById('baths_min').value),
         sqft_min: parseInt(document.getElementById('sqft_min').value),
-        priorities,
+        priorities: state.priorities,
       };
+    }
+
+    async function loadPreview() {
+      goToStep(4);
+      const preferences = getPreferences();
+      if (preferences.neighborhoods.length === 0) {
+        document.getElementById('preview-content').innerHTML = `
+          <div class="card"><div class="error-msg">Please select at least one neighborhood.</div></div>`;
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ preferences, city: 'san_francisco' }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.error || 'Failed');
+
+        state.preview = data;
+        renderPreview(data);
+      } catch (err) {
+        document.getElementById('preview-content').innerHTML = `
+          <div class="card"><div class="error-msg">Couldn't load preview: ${err.message}</div></div>`;
+      }
+    }
+
+    function renderPreview(data) {
+      const { total_matches, locked, visible } = data;
+
+      let html = `
+        <div class="preview-header">
+          <div class="preview-count">${total_matches}</div>
+          <div class="preview-count-label">listings match your criteria</div>
+        </div>
+      `;
+
+      // Locked top 3
+      if (locked.length > 0) {
+        html += '<div class="card-header" style="margin: 20px 0 12px;">Your top 3</div>';
+        locked.forEach((l, i) => {
+          html += `
+            <div class="listing listing-locked">
+              <span class="locked-badge">Locked</span>
+              <div class="listing-top">
+                <div>
+                  <a class="listing-addr">████████ ████</a>
+                  <div class="listing-meta" style="margin-top: 6px;">
+                    <span><strong>${l.price_range || '—'}</strong></span>
+                    <span>${l.bedrooms}bd / ${l.bathrooms}ba</span>
+                    <span>${l.neighborhood}</span>
+                    <span>${formatType(l.property_type)}</span>
+                  </div>
+                </div>
+                <div class="listing-score ${l.score >= 85 ? 'high' : ''}">${l.score}</div>
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      // Visible 4-6
+      if (visible.length > 0) {
+        html += '<div class="card-header" style="margin: 20px 0 12px;">Also strong matches</div>';
+        visible.forEach((l) => {
+          html += `
+            <div class="listing">
+              <div class="listing-top">
+                <div style="flex: 1; min-width: 0;">
+                  <a class="listing-addr" href="${l.url || '#'}" target="_blank" rel="noopener">${escapeHtml(l.address?.split(',')[0] || '—')}</a>
+                  <div class="listing-meta" style="margin-top: 6px;">
+                    <span><strong>$${formatPrice(l.price)}</strong></span>
+                    <span>${l.bedrooms}bd / ${l.bathrooms}ba</span>
+                    ${l.sqft ? `<span>${l.sqft.toLocaleString()} sqft</span>` : ''}
+                    <span>${l.neighborhood}</span>
+                    <span>${formatType(l.property_type)}</span>
+                  </div>
+                </div>
+                <div class="listing-score ${l.score >= 85 ? 'high' : ''}">${l.score}</div>
+              </div>
+              ${l.explanation ? `<div class="listing-why">${escapeHtml(l.explanation)}</div>` : ''}
+            </div>
+          `;
+        });
+      }
+
+      if (total_matches === 0) {
+        html += `
+          <div class="card" style="text-align: center; padding: 40px;">
+            <p style="color: var(--text-muted); margin-bottom: 16px;">No listings match your current criteria. Try loosening your Must Haves or expanding neighborhoods.</p>
+            <button class="btn btn-secondary" onclick="goToStep(3)" style="flex: 0 1 auto; display: inline-block; padding: 10px 20px;">Adjust preferences</button>
+          </div>
+        `;
+      } else {
+        html += `
+          <div class="cta-card">
+            <h3>See your top 3 + get daily updates</h3>
+            <p>We'll email you every morning with scored matches and what changed.</p>
+          </div>
+        `;
+      }
+
+      document.getElementById('preview-content').innerHTML = html;
+      document.getElementById('signup-card').classList.toggle('hidden', total_matches === 0);
+    }
+
+    async function submitForm() {
+      const btn = document.getElementById('submit-btn');
+      const email = document.getElementById('email').value.trim();
+      const errContainer = document.getElementById('error-container');
+      errContainer.innerHTML = '';
+
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errContainer.innerHTML = '<div class="error-msg">Please enter a valid email address.</div>';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="loader"></span> Setting up...';
 
       try {
         const res = await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, preferences, city: 'san_francisco' }),
+          body: JSON.stringify({ email, preferences: getPreferences(), city: 'san_francisco' }),
         });
         const data = await res.json();
 
-        if (res.ok) {
-          document.getElementById('form').classList.add('hidden');
-          document.getElementById('success').classList.remove('hidden');
-        } else {
-          alert('Error: ' + (data.error || 'Something went wrong'));
-          btn.disabled = false;
-          btn.textContent = 'Start My Daily Scan';
-        }
+        if (!res.ok) throw new Error(data.error || 'Something went wrong');
+
+        goToStep(5);
       } catch (err) {
-        alert('Network error. Please try again.');
+        errContainer.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
         btn.disabled = false;
-        btn.textContent = 'Start My Daily Scan';
+        btn.textContent = 'Unlock top 3 + get daily email';
       }
-    });
+    }
+
+    function formatPrice(p) {
+      if (!p) return '?';
+      if (p >= 1000000) return (p / 1000000).toFixed(p % 1000000 === 0 ? 0 : 2) + 'M';
+      return (p / 1000).toFixed(0) + 'K';
+    }
+
+    function formatType(t) {
+      const types = { sfh: 'SFH', single_family: 'SFH', condo: 'Condo', tic: 'TIC', duplex: 'Duplex' };
+      return types[t?.toLowerCase()] || t || '—';
+    }
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
   </script>
 </body>
 </html>

@@ -3,93 +3,139 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HomeScout — Dashboard</title>
+  <title>HomeScout — Your Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:wght@500;600;700&display=swap">
   <style>
+    :root {
+      --bg: #fafaf8;
+      --surface: #ffffff;
+      --surface-alt: #f5f4f0;
+      --border: #e8e5dd;
+      --border-strong: #d4cfc0;
+      --text: #1a1814;
+      --text-muted: #6b6757;
+      --text-subtle: #9a9686;
+      --accent: #2d5f3f;
+      --accent-soft: #e8f1ec;
+      --warning: #b65c2a;
+      --danger: #9c2b2b;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #fafafa; color: #1a1a1a; line-height: 1.6; }
-    .container { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
-    h1 { font-size: 24px; margin-bottom: 4px; }
-    .subtitle { color: #666; font-size: 14px; margin-bottom: 24px; }
-    .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-    .card h2 { font-size: 16px; margin-bottom: 12px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { text-align: left; padding: 8px 6px; background: #f5f5f5; font-weight: 600; font-size: 12px; }
-    td { padding: 8px 6px; border-bottom: 1px solid #f0f0f0; }
-    .score { font-weight: 700; }
-    .score-high { color: #2563eb; }
-    .score-mid { color: #d97706; }
-    .score-low { color: #999; }
-    a { color: #2563eb; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .explanation { font-size: 12px; color: #666; margin-top: 4px; }
-    .loading { text-align: center; padding: 48px; color: #888; }
-    .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
-    .tag-active { background: #dcfce7; color: #16a34a; }
-    .tag-pending { background: #fef3c7; color: #d97706; }
-    .tag-sold { background: #fee2e2; color: #dc2626; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; -webkit-font-smoothing: antialiased; font-size: 15px; }
+    .container { max-width: 880px; margin: 0 auto; padding: 32px 20px 60px; }
+    .header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 32px; }
+    .logo { font-family: 'Fraunces', Georgia, serif; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+    .logo .dot { color: var(--accent); }
+    .subtitle { color: var(--text-muted); font-size: 13px; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center; }
+    .stat-num { font-family: 'Fraunces', Georgia, serif; font-size: 24px; font-weight: 600; color: var(--text); }
+    .stat-label { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+    .section-header { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-subtle); margin: 24px 0 12px; }
+    .listing { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 10px; }
+    .listing-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .listing-num { font-family: 'Fraunces', Georgia, serif; color: var(--text-subtle); font-weight: 600; min-width: 24px; }
+    .listing-content { flex: 1; min-width: 0; }
+    .listing-addr { font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); text-decoration: none; }
+    .listing-addr:hover { color: var(--accent); }
+    .listing-meta { color: var(--text-muted); font-size: 13px; display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+    .listing-meta strong { color: var(--text); }
+    .listing-why { font-size: 13px; color: var(--text-muted); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .listing-score { flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
+    .listing-score.high { background: var(--accent); color: white; }
+    .loading { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+    .error { text-align: center; padding: 40px 20px; color: var(--danger); }
+    @media (max-width: 520px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .container { padding: 24px 16px 60px; }
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>HomeScout</h1>
-    <p class="subtitle" id="subtitle">Loading your dashboard...</p>
+    <header class="header">
+      <div>
+        <h1 class="logo">Home<span class="dot">.</span>Scout</h1>
+        <p class="subtitle" id="subtitle">Loading dashboard...</p>
+      </div>
+    </header>
 
-    <div id="content" class="loading">Loading...</div>
+    <div id="content" class="loading">Loading your matches...</div>
   </div>
 
   <script>
     const userId = window.location.pathname.split('/').pop();
 
-    async function loadDashboard() {
+    async function load() {
       try {
         const res = await fetch(`/api/dashboard/${userId}`);
         if (!res.ok) throw new Error('Not found');
         const data = await res.json();
 
-        document.getElementById('subtitle').textContent =
-          `${data.listings.length} listings scored for ${data.user.email}`;
+        document.getElementById('subtitle').textContent = data.user.email;
 
-        let html = '<div class="card"><h2>Your Top Listings</h2><table>';
-        html += '<tr><th>#</th><th>Address</th><th>Price</th><th>Bd/Ba</th><th>Area</th><th>Score</th></tr>';
+        const total = data.listings.length;
+        const avgScore = total > 0 ? Math.round(data.listings.reduce((s, l) => s + (l.score || 0), 0) / total) : 0;
+        const highScore = data.listings.filter(l => l.score >= 85).length;
 
-        data.listings.forEach((l, i) => {
-          const scoreClass = l.score >= 85 ? 'score-high' : l.score >= 70 ? 'score-mid' : 'score-low';
-          html += `<tr>
-            <td>${i + 1}</td>
-            <td><a href="${l.url || '#'}" target="_blank">${l.address?.split(',')[0] || '—'}</a>
-              ${l.explanation ? `<div class="explanation">${l.explanation}</div>` : ''}
-            </td>
-            <td>$${l.price ? (l.price / 1000).toFixed(0) + 'K' : '?'}</td>
-            <td>${l.bedrooms || '?'}/${l.bathrooms || '?'}</td>
-            <td>${l.neighborhood || '—'}</td>
-            <td class="score ${scoreClass}">${l.score}</td>
-          </tr>`;
-        });
+        let html = `
+          <div class="stats">
+            <div class="stat"><div class="stat-num">${total}</div><div class="stat-label">Active matches</div></div>
+            <div class="stat"><div class="stat-num">${highScore}</div><div class="stat-label">Score 85+</div></div>
+            <div class="stat"><div class="stat-num">${avgScore}</div><div class="stat-label">Avg score</div></div>
+            <div class="stat"><div class="stat-num">${data.scans?.length || 0}</div><div class="stat-label">Recent scans</div></div>
+          </div>
+          <div class="section-header">Your top matches</div>
+        `;
 
-        html += '</table></div>';
-
-        if (data.scans && data.scans.length > 0) {
-          html += '<div class="card"><h2>Recent Scans</h2><table>';
-          html += '<tr><th>Date</th><th>New</th><th>Removed</th><th>Price Changes</th></tr>';
-          data.scans.forEach(s => {
-            html += `<tr>
-              <td>${s.scan_date}</td>
-              <td style="color:#16a34a;">${s.new_listings > 0 ? '+' + s.new_listings : '0'}</td>
-              <td style="color:#dc2626;">${s.removed_listings > 0 ? '-' + s.removed_listings : '0'}</td>
-              <td>${s.price_changes || 0}</td>
-            </tr>`;
+        if (total === 0) {
+          html += '<div class="loading" style="padding: 40px;">No matches yet. Your first scan runs tomorrow morning.</div>';
+        } else {
+          data.listings.forEach((l, i) => {
+            html += `
+              <div class="listing">
+                <div class="listing-top">
+                  <span class="listing-num">${i + 1}</span>
+                  <div class="listing-content">
+                    <a class="listing-addr" href="${l.url || '#'}" target="_blank" rel="noopener">${escapeHtml(l.address?.split(',')[0] || '—')}</a>
+                    <div class="listing-meta">
+                      <span><strong>$${formatPrice(l.price)}</strong></span>
+                      <span>${l.bedrooms || '?'}bd / ${l.bathrooms || '?'}ba</span>
+                      ${l.sqft ? `<span>${l.sqft.toLocaleString()} sqft</span>` : ''}
+                      <span>${l.neighborhood || '—'}</span>
+                    </div>
+                    ${l.explanation ? `<div class="listing-why">${escapeHtml(l.explanation)}</div>` : ''}
+                  </div>
+                  <div class="listing-score ${l.score >= 85 ? 'high' : ''}">${l.score}</div>
+                </div>
+              </div>
+            `;
           });
-          html += '</table></div>';
         }
 
         document.getElementById('content').innerHTML = html;
       } catch (err) {
-        document.getElementById('content').innerHTML =
-          '<p style="text-align:center; color:#dc2626;">Dashboard not found. Check your email for the correct link.</p>';
+        document.getElementById('content').innerHTML = '<div class="error">Dashboard not found. Check your email for the correct link.</div>';
       }
     }
 
-    loadDashboard();
+    function formatPrice(p) {
+      if (!p) return '?';
+      if (p >= 1000000) return (p / 1000000).toFixed(p % 1000000 === 0 ? 0 : 2) + 'M';
+      return (p / 1000).toFixed(0) + 'K';
+    }
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    load();
   </script>
 </body>
 </html>

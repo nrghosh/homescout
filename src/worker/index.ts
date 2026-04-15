@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
 import { scoreListing } from "./scorer";
 import { scrapeNeighborhood } from "./scraper";
 import { sendDailyEmail } from "./email";
@@ -11,9 +12,13 @@ import {
   updateUser,
   getUsersForCity,
   getTopScoresForUser,
-  markListingStatus,
-  logScan,
 } from "./db";
+import {
+  validateEmail,
+  validatePreferences,
+  validateCity,
+  checkRateLimit,
+} from "./validation";
 
 type Bindings = {
   DB: D1Database;
@@ -25,66 +30,176 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-app.use("/*", cors());
+// Security headers — CSP, HSTS, X-Frame-Options, etc.
+app.use(
+  "/*",
+  secureHeaders({
+    contentSecurityPolicy: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"], // inline styles in HTML
+      scriptSrc: ["'self'", "'unsafe-inline'"], // inline script for form handler
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "data:"],
+      frameAncestors: ["'none'"],
+    },
+    strictTransportSecurity: "max-age=31536000; includeSubDomains",
+    xFrameOptions: "DENY",
+    xContentTypeOptions: "nosniff",
+    referrerPolicy: "strict-origin-when-cross-origin",
+  })
+);
 
-// Create or update user preferences
-app.post("/api/users", async (c) => {
-  const body = await c.req.json();
-  const { email, preferences, city } = body;
+// CORS — only allow same origin
+app.use("/api/*", cors({ origin: (origin) => origin || "*", credentials: false }));
 
-  if (!email || !preferences) {
-    return c.json({ error: "email and preferences required" }, 400);
+// Simple client IP extraction for rate limiting
+function clientKey(c: any): string {
+  return c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "anon";
+}
+
+// --- Preview endpoint (no email required) ---
+// Returns a teaser: matches #4-6 visible, #1-3 blurred
+app.post("/api/preview", async (c) => {
+  const ip = clientKey(c);
+  if (!checkRateLimit(`preview:${ip}`, 20, 60_000)) {
+    return c.json({ error: "Too many requests. Please wait a moment." }, 429);
   }
 
-  const existing = await getUser(c.env.DB, email);
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON" }, 400);
+  }
+
+  const prefsCheck = validatePreferences(body.preferences);
+  if (!prefsCheck.ok) return c.json({ error: prefsCheck.error }, 400);
+
+  const city = body.city || "san_francisco";
+  const cityCheck = validateCity(city);
+  if (!cityCheck.ok) return c.json({ error: cityCheck.error }, 400);
+
+  // Get all active listings and score them
+  const listings = await getActiveListings(c.env.DB, city);
+  const scored = [];
+
+  for (const listing of listings.results) {
+    const result = await scoreListing(c.env.AI, listing, prefsCheck.value);
+    if (result.score > 0) {
+      scored.push({ ...listing, ...result });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+
+  // Top 3 = locked teasers (show score + neighborhood only)
+  // 4-6 = full details (proof the product works)
+  const locked = scored.slice(0, 3).map((l) => ({
+    score: l.score,
+    neighborhood: l.neighborhood,
+    bedrooms: l.bedrooms,
+    bathrooms: l.bathrooms,
+    property_type: l.property_type,
+    price_range: l.price ? priceRange(l.price) : null,
+    locked: true,
+  }));
+
+  const visible = scored.slice(3, 6).map((l) => ({
+    score: l.score,
+    address: l.address,
+    price: l.price,
+    bedrooms: l.bedrooms,
+    bathrooms: l.bathrooms,
+    sqft: l.sqft,
+    neighborhood: l.neighborhood,
+    property_type: l.property_type,
+    url: l.url,
+    explanation: l.explanation,
+    locked: false,
+  }));
+
+  return c.json({
+    total_matches: scored.length,
+    locked,
+    visible,
+    city,
+  });
+});
+
+// --- Create or update user ---
+app.post("/api/users", async (c) => {
+  const ip = clientKey(c);
+  if (!checkRateLimit(`signup:${ip}`, 5, 60_000)) {
+    return c.json({ error: "Too many signup attempts. Please wait a moment." }, 429);
+  }
+
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON" }, 400);
+  }
+
+  const emailCheck = validateEmail(body.email);
+  if (!emailCheck.ok) return c.json({ error: emailCheck.error }, 400);
+
+  const prefsCheck = validatePreferences(body.preferences);
+  if (!prefsCheck.ok) return c.json({ error: prefsCheck.error }, 400);
+
+  const cityCheck = validateCity(body.city || "san_francisco");
+  if (!cityCheck.ok) return c.json({ error: cityCheck.error }, 400);
+
+  const existing = await getUser(c.env.DB, emailCheck.value);
   if (existing) {
-    await updateUser(c.env.DB, existing.id, preferences);
+    await updateUser(c.env.DB, existing.id as string, prefsCheck.value);
     return c.json({ id: existing.id, updated: true });
   }
 
-  const user = await createUser(c.env.DB, email, city || "san_francisco", preferences);
+  const user = await createUser(c.env.DB, emailCheck.value, cityCheck.value, prefsCheck.value);
   return c.json({ id: user.id, created: true });
 });
 
-// Get user dashboard data
+// --- Dashboard data ---
 app.get("/api/dashboard/:userId", async (c) => {
   const userId = c.req.param("userId");
-  const user = await c.env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
+  // Sanitize userId (UUID format only)
+  if (!/^[a-f0-9-]{36}$/.test(userId)) {
+    return c.json({ error: "Invalid user ID" }, 400);
+  }
 
+  const user = await c.env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
   if (!user) return c.json({ error: "user not found" }, 404);
 
   const scores = await getTopScoresForUser(c.env.DB, userId, 20);
   const recentScans = await c.env.DB.prepare(
     "SELECT * FROM scan_log WHERE city = ? ORDER BY scan_date DESC LIMIT 7"
-  ).bind(user.city as string).all();
+  )
+    .bind(user.city as string)
+    .all();
 
   return c.json({
-    user: { id: user.id, email: user.email, preferences: JSON.parse(user.preferences as string) },
+    user: {
+      id: user.id,
+      email: user.email,
+      preferences: JSON.parse(user.preferences as string),
+    },
     listings: scores.results,
     scans: recentScans.results,
   });
 });
 
-// Get preferences config (neighborhoods etc.)
-app.get("/api/config/:city", async (c) => {
-  const city = c.req.param("city");
-  if (city !== "san_francisco") return c.json({ error: "city not supported yet" }, 400);
-
-  return c.json({
-    city: "san_francisco",
-    neighborhoods: SF_NEIGHBORHOODS,
-    preference_fields: PREFERENCE_FIELDS,
-    priority_buckets: ["must_have", "important", "nice_to_have", "not_important"],
-  });
-});
-
-// Manual scan trigger (for testing)
+// Manual scan trigger (for testing, rate limited)
 app.post("/api/scan", async (c) => {
+  const ip = clientKey(c);
+  if (!checkRateLimit(`scan:${ip}`, 1, 3600_000)) {
+    return c.json({ error: "Scans are rate-limited to 1 per hour" }, 429);
+  }
   const result = await runDailyScan(c.env);
   return c.json(result);
 });
 
-// Dashboard route — serve static HTML for any /dashboard/* path
+// Dashboard static HTML for any /dashboard/* path
 app.get("/dashboard/*", async (c) => {
   return c.env.ASSETS.fetch(new Request(new URL("/dashboard.html", c.req.url)));
 });
@@ -92,21 +207,41 @@ app.get("/dashboard/*", async (c) => {
 // Cron handler
 export default {
   fetch: app.fetch,
-  async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
+  async scheduled(_event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
     ctx.waitUntil(runDailyScan(env));
   },
 };
 
-// --- Core scan logic ---
+// --- Helpers ---
+
+function priceRange(price: number): string {
+  const m = price / 1_000_000;
+  if (m < 1) return "under $1M";
+  if (m < 1.5) return "$1-1.5M";
+  if (m < 2) return "$1.5-2M";
+  if (m < 2.5) return "$2-2.5M";
+  if (m < 3) return "$2.5-3M";
+  return "$3M+";
+}
 
 async function runDailyScan(env: Bindings) {
   const city = "san_francisco";
   let newCount = 0;
-  let removedCount = 0;
-  let priceChanges = 0;
 
-  // Phase 1: Scrape each neighborhood for new listings
-  const allNeighborhoods = SF_NEIGHBORHOODS.map((g) => g.neighborhoods).flat();
+  const allNeighborhoods = [
+    "Cole Valley",
+    "Noe Valley",
+    "Dolores Heights",
+    "Corona Heights",
+    "Inner Sunset",
+    "Duboce Triangle",
+    "The Castro",
+    "Glen Park",
+    "Eureka Valley",
+    "Ashbury Heights",
+    "Mission Dolores",
+    "Buena Vista",
+  ];
 
   for (const hood of allNeighborhoods) {
     try {
@@ -120,7 +255,6 @@ async function runDailyScan(env: Bindings) {
     }
   }
 
-  // Phase 2: Score listings for each user
   const users = await getUsersForCity(env.DB, city);
   const activeListings = await getActiveListings(env.DB, city);
 
@@ -128,12 +262,7 @@ async function runDailyScan(env: Bindings) {
     const prefs = JSON.parse(user.preferences as string);
 
     for (const listing of activeListings.results) {
-      const { score, breakdown, explanation } = await scoreListing(
-        env.AI,
-        listing,
-        prefs
-      );
-
+      const { score, breakdown, explanation } = await scoreListing(env.AI, listing, prefs);
       await env.DB.prepare(
         `INSERT INTO user_scores (user_id, listing_id, score, breakdown, explanation)
          VALUES (?, ?, ?, ?, ?)
@@ -147,7 +276,6 @@ async function runDailyScan(env: Bindings) {
         .run();
     }
 
-    // Phase 3: Send email
     if (env.RESEND_API_KEY) {
       const topScores = await getTopScoresForUser(env.DB, user.id as string, 10);
       await sendDailyEmail(
@@ -155,52 +283,10 @@ async function runDailyScan(env: Bindings) {
         user.email as string,
         user.id as string,
         topScores.results,
-        { newCount, removedCount, priceChanges }
+        { newCount, removedCount: 0, priceChanges: 0 }
       );
     }
   }
 
-  // Log the scan
-  await logScan(env.DB, city, newCount, removedCount, priceChanges);
-
-  return { success: true, newCount, removedCount, priceChanges, usersNotified: users.results.length };
+  return { success: true, newCount, usersNotified: users.results.length };
 }
-
-// --- SF Config ---
-
-const SF_NEIGHBORHOODS = [
-  {
-    group: "Preferred",
-    neighborhoods: [
-      "Cole Valley",
-      "Noe Valley",
-      "Dolores Heights",
-      "Corona Heights",
-      "Inner Sunset",
-    ],
-  },
-  {
-    group: "Central",
-    neighborhoods: [
-      "Duboce Triangle",
-      "The Castro",
-      "Glen Park",
-      "Eureka Valley",
-      "Ashbury Heights",
-      "Mission Dolores",
-      "Buena Vista",
-    ],
-  },
-];
-
-const PREFERENCE_FIELDS = [
-  { key: "neighborhood", label: "Neighborhood", type: "multi_select" },
-  { key: "price", label: "Price Range", type: "range", min: 500000, max: 5000000, step: 50000 },
-  { key: "bedrooms", label: "Bedrooms", type: "min", options: [1, 2, 3, 4, 5] },
-  { key: "bathrooms", label: "Bathrooms", type: "min", options: [1, 1.5, 2, 2.5, 3] },
-  { key: "sqft", label: "Square Footage", type: "min", options: [800, 1000, 1200, 1400, 1600, 1800, 2000] },
-  { key: "property_type", label: "Property Type", type: "priority", options: ["Single Family", "Condo", "TIC", "Duplex"] },
-  { key: "parking", label: "Parking", type: "priority" },
-  { key: "walkability", label: "Walkability / Transit", type: "priority" },
-  { key: "condition", label: "Move-in Ready", type: "priority" },
-];
