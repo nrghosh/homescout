@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { scoreListing, scoreListingRuleBased } from "./scorer";
+import { verifyListings } from "./verify";
 import { scrapeNeighborhood } from "./scraper";
 import { sendDailyEmail } from "./email";
 import {
@@ -102,6 +103,47 @@ app.post("/api/preview", async (c) => {
     })
     .filter((l) => l.score > 0)
     .sort((a: any, b: any) => b.score - a.score);
+
+  // Verify the top 10 candidates by fetching their URLs (catches stale data)
+  const topCandidates = ruleScored.slice(0, 10);
+  const verifyTargets = topCandidates
+    .filter((l: any) => l.url && shouldReVerify(l.last_checked))
+    .map((l: any) => ({ id: l.id, url: l.url }));
+
+  if (verifyTargets.length > 0) {
+    const results = await verifyListings(verifyTargets, 5);
+    for (const [id, result] of results) {
+      // If verified non-active, update DB and remove from candidates
+      if (result.status !== "active" && result.confidence === "high") {
+        await c.env.DB.prepare(
+          "UPDATE listings SET status = ?, last_checked = datetime('now') WHERE id = ?"
+        )
+          .bind(result.status, id)
+          .run();
+      } else if (result.status === "active") {
+        await c.env.DB.prepare(
+          "UPDATE listings SET last_checked = datetime('now') WHERE id = ?"
+        )
+          .bind(id)
+          .run();
+      }
+    }
+
+    // Filter out any that were just marked non-active
+    const stillActive = new Set(
+      Array.from(results.entries())
+        .filter(([_, r]) => r.status === "active" || r.confidence !== "high")
+        .map(([id]) => id)
+    );
+    const verifiedIds = new Set(verifyTargets.map((t) => t.id));
+
+    // Keep listings that weren't verified, OR were verified as still active
+    const filtered = ruleScored.filter((l: any) =>
+      !verifiedIds.has(l.id) || stillActive.has(l.id)
+    );
+    ruleScored.length = 0;
+    ruleScored.push(...filtered);
+  }
 
   // Only generate LLM explanations for visible matches (4-6) — 3 LLM calls per preview max
   const visibleCandidates = ruleScored.slice(3, 6);
@@ -245,6 +287,14 @@ export default {
 };
 
 // --- Helpers ---
+
+function shouldReVerify(lastChecked: string | null | undefined): boolean {
+  if (!lastChecked) return true;
+  const last = new Date(lastChecked).getTime();
+  const now = Date.now();
+  // Re-verify if last check was more than 6 hours ago
+  return now - last > 6 * 60 * 60 * 1000;
+}
 
 async function hashPreferences(prefs: any, city: string): Promise<string> {
   // Canonical, sorted representation of prefs for cache key
