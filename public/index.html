@@ -371,14 +371,13 @@
       <div class="progress-dot active" data-step="1"></div>
       <div class="progress-dot" data-step="2"></div>
       <div class="progress-dot" data-step="3"></div>
-      <div class="progress-dot" data-step="4"></div>
     </div>
 
-    <!-- Step 1: Basics -->
+    <!-- Step 1: Basics + Neighborhoods (merged per P0.3) -->
     <section class="step active" data-step="1">
       <div class="step-header">
         <h2 class="step-title">What are you looking for?</h2>
-        <p class="step-subtitle">We'll scan Redfin, Zillow, and Compass daily and score every listing against what matters to you.</p>
+        <p class="step-subtitle">We scan Redfin, Zillow, and Compass daily and score every SF listing against what matters to you.</p>
       </div>
 
       <div class="card">
@@ -403,53 +402,31 @@
             </select>
           </div>
         </div>
-        <div class="field">
-          <label>Bedrooms</label>
-          <select id="beds_min">
-            <option value="1">1+</option>
-            <option value="2" selected>2+</option>
-            <option value="3">3+</option>
-            <option value="4">4+</option>
-          </select>
+        <div class="row">
+          <div class="field" style="margin-bottom:0;">
+            <label>Bedrooms</label>
+            <select id="beds_min">
+              <option value="1">1+</option>
+              <option value="2" selected>2+</option>
+              <option value="3">3+</option>
+              <option value="4">4+</option>
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label>Bathrooms</label>
+            <select id="baths_min">
+              <option value="1">1+</option>
+              <option value="1.5">1.5+</option>
+              <option value="2" selected>2+</option>
+              <option value="2.5">2.5+</option>
+              <option value="3">3+</option>
+            </select>
+          </div>
         </div>
-        <div class="field">
-          <label>Bathrooms</label>
-          <select id="baths_min">
-            <option value="1">1+</option>
-            <option value="1.5">1.5+</option>
-            <option value="2" selected>2+</option>
-            <option value="2.5">2.5+</option>
-            <option value="3">3+</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Minimum square footage</label>
-          <select id="sqft_min">
-            <option value="0">No minimum</option>
-            <option value="800">800+</option>
-            <option value="1000">1,000+</option>
-            <option value="1200">1,200+</option>
-            <option value="1400">1,400+</option>
-            <option value="1600" selected>1,600+</option>
-            <option value="1800">1,800+</option>
-            <option value="2000">2,000+</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="goToStep(2)">Continue</button>
-      </div>
-    </section>
-
-    <!-- Step 2: Neighborhoods -->
-    <section class="step" data-step="2">
-      <div class="step-header">
-        <h2 class="step-title">Which neighborhoods?</h2>
-        <p class="step-subtitle">Select the areas you'd consider. You can change this later.</p>
       </div>
 
       <div class="card">
+        <div class="card-header">Neighborhoods</div>
         <div class="hood-group">
           <div class="group-label">Popular in SF</div>
           <div class="chips">
@@ -475,16 +452,25 @@
       </div>
 
       <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goToStep(1)">Back</button>
-        <button class="btn btn-primary" onclick="goToStep(3)">Continue</button>
+        <button class="btn btn-primary" onclick="goToStep(2)">Continue</button>
       </div>
     </section>
 
-    <!-- Step 3: Priorities -->
-    <section class="step" data-step="3">
+    <!-- Step 2: Priorities (with smart defaults shortcut) -->
+    <section class="step" data-step="2">
       <div class="step-header">
         <h2 class="step-title">What matters most?</h2>
-        <p class="step-subtitle">Drag each into a bucket. <strong>Must Have</strong> items become hard filters — listings that don't meet them are excluded.</p>
+        <p class="step-subtitle"><strong>Must Have</strong> items become hard filters. <strong>Important</strong> items weight your score most. Set <strong>Not Important</strong> to ignore.</p>
+      </div>
+
+      <div class="card" style="background: var(--accent-soft); border-color: var(--accent);">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div style="flex: 1;">
+            <div style="font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 2px;">⚡ Skip ahead with smart defaults</div>
+            <div style="font-size: 13px; color: var(--text-muted);">We'll use the settings most SF buyers like you pick. You can tune anytime.</div>
+          </div>
+          <button type="button" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px; flex: 0 0 auto;" onclick="applyDefaultsAndPreview()">Use defaults → Preview</button>
+        </div>
       </div>
 
       <div class="card">
@@ -492,13 +478,13 @@
       </div>
 
       <div class="btn-row">
-        <button class="btn btn-secondary" onclick="goToStep(2)">Back</button>
+        <button class="btn btn-secondary" onclick="goToStep(1)">Back</button>
         <button class="btn btn-primary" id="preview-btn" onclick="loadPreview()">Preview my matches</button>
       </div>
     </section>
 
-    <!-- Step 4: Preview + signup -->
-    <section class="step" data-step="4">
+    <!-- Step 3: Preview + signup (was Step 4) -->
+    <section class="step" data-step="3">
       <div class="step-header">
         <h2 class="step-title">Your matches</h2>
         <p class="step-subtitle">Here's what we found today. Enter your email to unlock the top 3 and get daily updates.</p>
@@ -518,14 +504,14 @@
         </div>
         <div id="error-container"></div>
         <div class="btn-row">
-          <button class="btn btn-secondary" onclick="goToStep(3)">Adjust</button>
+          <button class="btn btn-secondary" onclick="goToStep(2)">Adjust</button>
           <button class="btn btn-primary" id="submit-btn" onclick="submitForm()">Unlock top 3 + get daily email</button>
         </div>
       </div>
     </section>
 
     <!-- Success -->
-    <section class="step" data-step="5">
+    <section class="step" data-step="4">
       <div class="success">
         <div class="success-icon">✓</div>
         <h2>You're all set</h2>
@@ -585,6 +571,27 @@
       });
     }
 
+    // Apply "most SF buyers like you" defaults then jump to preview
+    function applyDefaultsAndPreview() {
+      // Defaults derived from the 24-user seed preference survey: most SF buyers
+      // treat price/beds/baths as must-have, neighborhood/size/type as important.
+      const SF_DEFAULTS = {
+        price: "must_have",
+        bedrooms: "must_have",
+        bathrooms: "must_have",
+        neighborhood: "important",
+        size: "important",
+        property_type: "important",
+        parking: "nice_to_have",
+        walkability: "nice_to_have",
+        condition: "nice_to_have",
+      };
+      for (const [k, v] of Object.entries(SF_DEFAULTS)) {
+        setBucket(k, v);
+      }
+      loadPreview();
+    }
+
     function goToStep(n) {
       document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
       document.querySelector(`.step[data-step="${n}"]`).classList.add('active');
@@ -606,13 +613,13 @@
         price_max: parseInt(document.getElementById('price_max').value),
         beds_min: parseFloat(document.getElementById('beds_min').value),
         baths_min: parseFloat(document.getElementById('baths_min').value),
-        sqft_min: parseInt(document.getElementById('sqft_min').value),
+        sqft_min: 0,  // Priorities handle size weighting; no hard minimum in merged step 1
         priorities: state.priorities,
       };
     }
 
     async function loadPreview() {
-      goToStep(4);
+      goToStep(3);
       const preferences = getPreferences();
       if (preferences.neighborhoods.length === 0) {
         document.getElementById('preview-content').innerHTML = `
@@ -719,7 +726,7 @@
         html += `
           <div class="card" style="text-align: center; padding: 40px;">
             <p style="color: var(--text-muted); margin-bottom: 16px;">No listings match your current criteria. Try loosening your Must Haves or expanding neighborhoods.</p>
-            <button class="btn btn-secondary" onclick="goToStep(3)" style="flex: 0 1 auto; display: inline-block; padding: 10px 20px;">Adjust preferences</button>
+            <button class="btn btn-secondary" onclick="goToStep(2)" style="flex: 0 1 auto; display: inline-block; padding: 10px 20px;">Adjust preferences</button>
           </div>
         `;
       } else {
@@ -759,7 +766,7 @@
 
         if (!res.ok) throw new Error(data.error || 'Something went wrong');
 
-        goToStep(5);
+        goToStep(4);
       } catch (err) {
         errContainer.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
         btn.disabled = false;
