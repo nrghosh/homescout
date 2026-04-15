@@ -95,6 +95,21 @@ CREATE INDEX IF NOT EXISTS idx_explanation_cache_created ON explanation_cache(cr
 CREATE INDEX IF NOT EXISTS idx_preview_cache_created ON preview_cache(created_at);
 CREATE INDEX IF NOT EXISTS idx_source_attribution_listing ON source_attribution(listing_id);
 
+-- Append-only log of every scrape result (for auditing, replay, conflict detection)
+-- P0.2 — "cheapest insurance policy" per engineering debate
+CREATE TABLE IF NOT EXISTS listing_source_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_id TEXT,           -- NULL if we can't match yet (address-keyed lookup)
+  address TEXT NOT NULL,     -- canonical address (lowercased) for joins
+  source TEXT NOT NULL,      -- 'redfin', 'compass', 'zillow', 'coldwell_banker', 'realtor'
+  scraped_at TEXT NOT NULL DEFAULT (datetime('now')),
+  raw_json TEXT NOT NULL,    -- full data from the source at that point in time
+  scan_id TEXT               -- optional: links to scan_log.id for grouping
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshots_address ON listing_source_snapshots(address, scraped_at);
+CREATE INDEX IF NOT EXISTS idx_snapshots_listing ON listing_source_snapshots(listing_id, scraped_at);
+
 -- Feature flags — runtime config without redeploys
 CREATE TABLE IF NOT EXISTS feature_flags (
   key TEXT PRIMARY KEY,

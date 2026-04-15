@@ -316,6 +316,26 @@ app.post("/api/flags/:key", async (c) => {
   return c.json({ ok: true, key, value, rollout_percent });
 });
 
+// Debug: snapshot history for an address (P0.2 — audit trail)
+app.get("/api/debug/snapshots", async (c) => {
+  const address = c.req.query("address")?.toLowerCase().trim();
+  if (!address) return c.json({ error: "?address=... required" }, 400);
+
+  const rows = await c.env.DB.prepare(
+    `SELECT source, scraped_at, json_extract(raw_json, '$.price') as price,
+            json_extract(raw_json, '$.status') as status,
+            json_extract(raw_json, '$.bathrooms') as bathrooms
+     FROM listing_source_snapshots
+     WHERE address = ?
+     ORDER BY scraped_at DESC
+     LIMIT 50`
+  )
+    .bind(address)
+    .all();
+
+  return c.json({ address, count: rows.results.length, snapshots: rows.results });
+});
+
 // Debug: inspect what scraper sees for a single neighborhood
 app.get("/api/debug/scrape/:neighborhood", async (c) => {
   const neighborhood = c.req.param("neighborhood").replace(/-/g, " ");
