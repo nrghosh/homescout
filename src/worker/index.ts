@@ -19,6 +19,7 @@ type Bindings = {
   DB: D1Database;
   AI: Ai;
   BROWSER: Fetcher;
+  ASSETS: Fetcher;
   RESEND_API_KEY: string;
 };
 
@@ -81,6 +82,11 @@ app.get("/api/config/:city", async (c) => {
 app.post("/api/scan", async (c) => {
   const result = await runDailyScan(c.env);
   return c.json(result);
+});
+
+// Dashboard route — serve static HTML for any /dashboard/* path
+app.get("/dashboard/*", async (c) => {
+  return c.env.ASSETS.fetch(new Request(new URL("/dashboard.html", c.req.url)));
 });
 
 // Cron handler

@@ -1,0 +1,1 @@
+This folder contains the built output assets for the worker "homescout" generated at 2026-04-14T21:49:49.822Z.

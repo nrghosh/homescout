@@ -8,7 +8,7 @@ crons = ["0 15 * * *"]  # 8am PT daily
 [[d1_databases]]
 binding = "DB"
 database_name = "homescout"
-database_id = "local"  # Will be replaced after `wrangler d1 create`
+database_id = "1e55753d-0e4f-4429-b96f-7bf1b9ca697f"
 
 [ai]
 binding = "AI"
@@ -19,5 +19,6 @@ binding = "BROWSER"
 [vars]
 RESEND_API_KEY = ""  # Set via wrangler secret
 
-[site]
-bucket = "./public"
+[assets]
+directory = "./public"
+binding = "ASSETS"
