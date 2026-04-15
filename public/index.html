@@ -674,6 +674,7 @@
                     <span>${l.neighborhood}</span>
                     <span>${formatType(l.property_type)}</span>
                   </div>
+                  ${l.last_checked ? `<div style="font-size: 11px; color: var(--text-subtle); margin-top: 4px;">Verified active ${daysAgo(l.last_checked)}</div>` : ''}
                 </div>
                 <div class="listing-score ${l.score >= 85 ? 'high' : ''}">${l.score}</div>
               </div>
@@ -744,6 +745,17 @@
     function formatType(t) {
       const types = { sfh: 'SFH', single_family: 'SFH', condo: 'Condo', tic: 'TIC', duplex: 'Duplex' };
       return types[t?.toLowerCase()] || t || '—';
+    }
+
+    function daysAgo(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      const now = new Date();
+      const diff = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+      if (diff <= 0) return 'today';
+      if (diff === 1) return 'yesterday';
+      if (diff < 7) return `${diff} days ago`;
+      return `${Math.floor(diff / 7)} week${diff >= 14 ? 's' : ''} ago`;
     }
 
     function escapeHtml(s) {

@@ -19,6 +19,9 @@ const BASE_WEIGHTS: Record<string, number> = {
   condition: 3,
 };
 
+// Only generate LLM explanations for scores at or above this threshold
+const LLM_THRESHOLD = 70;
+
 interface Preferences {
   neighborhoods?: string[];
   price_min?: number;
@@ -35,36 +38,35 @@ interface ScoreResult {
   explanation: string;
 }
 
-export async function scoreListing(
-  ai: Ai,
-  listing: any,
-  prefs: Preferences
-): Promise<ScoreResult> {
+// --- Rule-based score only (fast, no LLM) ---
+export function scoreListingRuleBased(listing: any, prefs: Preferences): {
+  score: number;
+  breakdown: Record<string, number>;
+} {
   const priorities = prefs.priorities || {};
   const breakdown: Record<string, number> = {};
   let totalWeight = 0;
   let totalScore = 0;
 
-  // --- Rule-based scoring ---
-
   // Hard filters (Must Have items auto-disqualify)
   if (priorities.bedrooms === "must_have" && listing.bedrooms < (prefs.beds_min || 2)) {
-    return { score: 0, breakdown: { bedrooms: 0 }, explanation: `Disqualified: only ${listing.bedrooms} bedrooms (need ${prefs.beds_min}+).` };
+    return { score: 0, breakdown: { bedrooms: 0 } };
   }
   if (priorities.bathrooms === "must_have" && listing.bathrooms < (prefs.baths_min || 2)) {
-    return { score: 0, breakdown: { bathrooms: 0 }, explanation: `Disqualified: only ${listing.bathrooms} bathrooms (need ${prefs.baths_min}+).` };
+    return { score: 0, breakdown: { bathrooms: 0 } };
   }
   if (priorities.price === "must_have" && listing.price > (prefs.price_max || 3000000)) {
-    return { score: 0, breakdown: { price: 0 }, explanation: `Disqualified: $${(listing.price / 1000000).toFixed(1)}M exceeds budget.` };
+    return { score: 0, breakdown: { price: 0 } };
+  }
+  if (priorities.price === "must_have" && listing.price < (prefs.price_min || 0)) {
+    return { score: 0, breakdown: { price: 0 } };
   }
 
-  // Score each dimension
   for (const [dim, baseWeight] of Object.entries(BASE_WEIGHTS)) {
     const bucket = priorities[dim] || "nice_to_have";
     const multiplier = BUCKET_WEIGHTS[bucket] || 1;
     const weight = baseWeight * multiplier;
-
-    if (weight === 0) continue; // Not important, skip
+    if (weight === 0) continue;
 
     const dimScore = scoreDimension(dim, listing, prefs);
     breakdown[dim] = Math.round(dimScore * weight);
@@ -72,31 +74,61 @@ export async function scoreListing(
     totalWeight += weight;
   }
 
-  // Normalize to 0-100
   const normalizedScore = totalWeight > 0 ? Math.round((totalScore / totalWeight) * 100) : 0;
+  return { score: normalizedScore, breakdown };
+}
 
-  // --- LLM explanation ---
-  let explanation = "";
-  try {
-    explanation = await generateExplanation(ai, listing, prefs, normalizedScore, breakdown);
-  } catch (err) {
-    // Fallback to template
-    explanation = templateExplanation(listing, normalizedScore, breakdown);
+// --- Full scoring with LLM explanation (only for high-scoring listings) ---
+export async function scoreListing(
+  ai: Ai,
+  listing: any,
+  prefs: Preferences,
+  options?: { db?: D1Database; skipLLM?: boolean }
+): Promise<ScoreResult> {
+  const { score, breakdown } = scoreListingRuleBased(listing, prefs);
+
+  // Skip LLM entirely for low-scoring or disqualified listings
+  if (score === 0 || score < LLM_THRESHOLD || options?.skipLLM) {
+    return {
+      score,
+      breakdown,
+      explanation: templateExplanation(listing, score, breakdown, prefs),
+    };
   }
 
-  return { score: normalizedScore, breakdown, explanation };
+  // Check cache first
+  if (options?.db) {
+    const cached = await getCachedExplanation(options.db, listing.id, prefs);
+    if (cached) {
+      return { score, breakdown, explanation: cached };
+    }
+  }
+
+  // Generate fresh LLM explanation
+  let explanation: string;
+  try {
+    explanation = await generateExplanation(ai, listing, prefs, score, breakdown);
+    if (options?.db) {
+      await setCachedExplanation(options.db, listing.id, prefs, explanation);
+    }
+  } catch {
+    explanation = templateExplanation(listing, score, breakdown, prefs);
+  }
+
+  return { score, breakdown, explanation };
 }
 
 function scoreDimension(dim: string, listing: any, prefs: Preferences): number {
   switch (dim) {
     case "price": {
       const max = prefs.price_max || 3000000;
-      const mid = max * 0.7;
+      const min = prefs.price_min || 0;
       if (!listing.price) return 0.5;
+      if (listing.price < min || listing.price > max) return 0.1;
+      const mid = (min + max) / 2;
       if (listing.price <= mid) return 1.0;
-      if (listing.price <= max * 0.85) return 0.75;
-      if (listing.price <= max) return 0.5;
-      return 0.1;
+      const ratio = (max - listing.price) / (max - mid);
+      return Math.max(0.3, ratio);
     }
     case "neighborhood": {
       const targetHoods = (prefs.neighborhoods || []).map((n: string) => n.toLowerCase());
@@ -136,16 +168,17 @@ function scoreDimension(dim: string, listing: any, prefs: Preferences): number {
     case "parking":
       if (listing.parking === 1 || listing.parking === true) return 1.0;
       if (listing.parking === 0 || listing.parking === false) return 0.0;
-      return 0.3; // Unknown
+      return 0.3;
     case "walkability":
-      return 0.6; // Default moderate, could enhance with walk score API later
+      return 0.6;
     case "condition":
-      return 0.6; // Default moderate, would need listing description analysis
+      return 0.6;
     default:
       return 0.5;
   }
 }
 
+// --- LLM explanation with tight prompt and post-processing ---
 async function generateExplanation(
   ai: Ai,
   listing: any,
@@ -153,29 +186,139 @@ async function generateExplanation(
   score: number,
   breakdown: Record<string, number>
 ): Promise<string> {
-  const prompt = `You are a real estate assistant. Write a 2-3 sentence explanation of why this listing scored ${score}/100 for this buyer. Be specific and concise.
-
-Listing: ${listing.address}, $${listing.price?.toLocaleString()}, ${listing.bedrooms}bd/${listing.bathrooms}ba, ${listing.sqft || "?"} sqft, ${listing.neighborhood}, ${listing.property_type}.
-Features: ${listing.features || "none listed"}.
-
-Buyer priorities: ${JSON.stringify(prefs.priorities || {})}
-Score breakdown: ${JSON.stringify(breakdown)}
-
-Write the explanation in plain English, mentioning the top 2-3 factors that drove the score up or down. No bullet points, just flowing text.`;
-
-  const response = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast" as any, {
-    prompt,
-    max_tokens: 150,
-  });
-
-  return (response as any).response || templateExplanation(listing, score, breakdown);
-}
-
-function templateExplanation(listing: any, score: number, breakdown: Record<string, number>): string {
-  const top = Object.entries(breakdown)
+  // Identify top 2-3 factors driving the score
+  const topFactors = Object.entries(breakdown)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 3)
     .map(([k]) => k);
 
-  return `Scored ${score}/100. Strongest on ${top.join(", ")}. ${listing.address} at $${((listing.price || 0) / 1000).toFixed(0)}K in ${listing.neighborhood}.`;
+  const priceM = listing.price ? (listing.price / 1_000_000).toFixed(2) : "?";
+  const prompt = `Explain in exactly 2 short sentences why this home scored ${score}/100. No meta-commentary. No "Note:", "Please", or "Let me know". Just the explanation.
+
+Home: $${priceM}M, ${listing.bedrooms}bd/${listing.bathrooms}ba, ${listing.sqft || "?"} sqft, ${listing.neighborhood}, ${listing.property_type || "home"}.
+Top scoring factors: ${topFactors.join(", ")}.
+
+Explanation:`;
+
+  const response = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast" as any, {
+    prompt,
+    max_tokens: 80,
+    temperature: 0.3,
+  });
+
+  const raw = (response as any).response || "";
+  return cleanExplanation(raw) || templateExplanation(listing, score, breakdown, prefs);
+}
+
+// Strip meta-commentary, conversational cruft, and garbled tails
+function cleanExplanation(text: string): string {
+  let cleaned = text.trim();
+
+  // Cut at known cruft phrases
+  const cruftPatterns = [
+    /\n\s*Note[:]/i,
+    /\n\s*Please let me know/i,
+    /\n\s*Let me know/i,
+    /\n\s*The score breakdown/i,
+    /\n\s*I hope this/i,
+    /\n\s*Is there/i,
+    /\n\s*Would you/i,
+    /\n\s*If you/i,
+    /Explanation[:]/i,
+  ];
+  for (const pattern of cruftPatterns) {
+    const match = cleaned.match(pattern);
+    if (match && match.index !== undefined) {
+      cleaned = cleaned.slice(0, match.index).trim();
+    }
+  }
+
+  // Remove leading labels / prefixes
+  cleaned = cleaned.replace(/^(Explanation|Summary|Answer)[:]\s*/i, "").trim();
+
+  // Keep to max 2 sentences, max 300 chars
+  const sentences = cleaned.match(/[^.!?]+[.!?]+/g);
+  if (sentences && sentences.length > 2) {
+    cleaned = sentences.slice(0, 2).join("").trim();
+  }
+  if (cleaned.length > 300) {
+    cleaned = cleaned.slice(0, 297).trim() + "...";
+  }
+
+  return cleaned;
+}
+
+function templateExplanation(
+  listing: any,
+  score: number,
+  breakdown: Record<string, number>,
+  prefs: Preferences
+): string {
+  if (score === 0) {
+    const priorities = prefs.priorities || {};
+    if (priorities.bedrooms === "must_have" && listing.bedrooms < (prefs.beds_min || 2))
+      return `Doesn't meet your bedroom minimum (${listing.bedrooms} vs ${prefs.beds_min || 2}+).`;
+    if (priorities.bathrooms === "must_have" && listing.bathrooms < (prefs.baths_min || 2))
+      return `Doesn't meet your bathroom minimum (${listing.bathrooms} vs ${prefs.baths_min || 2}+).`;
+    return "Doesn't match your must-have criteria.";
+  }
+
+  const top = Object.entries(breakdown)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 2)
+    .map(([k]) => k.replace("_", " "));
+
+  return `Scores ${score}/100. Strongest fit on ${top.join(" and ")}.`;
+}
+
+// --- Explanation caching ---
+function priorityHash(prefs: Preferences): string {
+  // Simple deterministic hash of the priority buckets + bounds that matter for scoring
+  const priorities = prefs.priorities || {};
+  const parts = [
+    ...Object.keys(priorities)
+      .sort()
+      .map((k) => `${k}:${priorities[k]}`),
+    `beds:${prefs.beds_min || 0}`,
+    `baths:${prefs.baths_min || 0}`,
+    `sqft:${prefs.sqft_min || 0}`,
+    `pmin:${prefs.price_min || 0}`,
+    `pmax:${prefs.price_max || 0}`,
+  ];
+  return parts.join("|");
+}
+
+async function getCachedExplanation(
+  db: D1Database,
+  listingId: string,
+  prefs: Preferences
+): Promise<string | null> {
+  const hash = priorityHash(prefs);
+  const row = await db
+    .prepare(
+      `SELECT explanation FROM explanation_cache
+       WHERE listing_id = ? AND priority_hash = ? AND created_at > datetime('now', '-7 days')`
+    )
+    .bind(listingId, hash)
+    .first();
+  return (row?.explanation as string) || null;
+}
+
+async function setCachedExplanation(
+  db: D1Database,
+  listingId: string,
+  prefs: Preferences,
+  explanation: string
+): Promise<void> {
+  const hash = priorityHash(prefs);
+  await db
+    .prepare(
+      `INSERT INTO explanation_cache (listing_id, priority_hash, explanation, created_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(listing_id, priority_hash) DO UPDATE SET
+         explanation = excluded.explanation,
+         created_at = excluded.created_at`
+    )
+    .bind(listingId, hash, explanation)
+    .run();
 }

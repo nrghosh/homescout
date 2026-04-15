@@ -62,7 +62,23 @@ CREATE TABLE IF NOT EXISTS scan_log (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS explanation_cache (
+  listing_id TEXT NOT NULL,
+  priority_hash TEXT NOT NULL,
+  explanation TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (listing_id, priority_hash)
+);
+
+CREATE TABLE IF NOT EXISTS preview_cache (
+  pref_hash TEXT PRIMARY KEY,
+  response TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_listings_status ON listings(status, city);
 CREATE INDEX IF NOT EXISTS idx_listings_neighborhood ON listings(neighborhood, status);
 CREATE INDEX IF NOT EXISTS idx_user_scores_user ON user_scores(user_id, score DESC);
 CREATE INDEX IF NOT EXISTS idx_price_history_listing ON price_history(listing_id, recorded_at);
+CREATE INDEX IF NOT EXISTS idx_explanation_cache_created ON explanation_cache(created_at);
+CREATE INDEX IF NOT EXISTS idx_preview_cache_created ON preview_cache(created_at);

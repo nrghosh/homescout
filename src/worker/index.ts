@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
-import { scoreListing } from "./scorer";
+import { scoreListing, scoreListingRuleBased } from "./scorer";
 import { scrapeNeighborhood } from "./scraper";
 import { sendDailyEmail } from "./email";
 import {
@@ -59,7 +59,7 @@ function clientKey(c: any): string {
 }
 
 // --- Preview endpoint (no email required) ---
-// Returns a teaser: matches #4-6 visible, #1-3 blurred
+// Returns a teaser: matches #4-6 visible with explanations, #1-3 locked
 app.post("/api/preview", async (c) => {
   const ip = clientKey(c);
   if (!checkRateLimit(`preview:${ip}`, 20, 60_000)) {
@@ -80,22 +80,55 @@ app.post("/api/preview", async (c) => {
   const cityCheck = validateCity(city);
   if (!cityCheck.ok) return c.json({ error: cityCheck.error }, 400);
 
-  // Get all active listings and score them
-  const listings = await getActiveListings(c.env.DB, city);
-  const scored = [];
+  // Check preview cache (by preference hash) — 1 hour TTL
+  const prefHash = await hashPreferences(prefsCheck.value, city);
+  const cached = await c.env.DB.prepare(
+    `SELECT response FROM preview_cache
+     WHERE pref_hash = ? AND created_at > datetime('now', '-1 hour')`
+  )
+    .bind(prefHash)
+    .first();
 
-  for (const listing of listings.results) {
-    const result = await scoreListing(c.env.AI, listing, prefsCheck.value);
-    if (result.score > 0) {
-      scored.push({ ...listing, ...result });
-    }
+  if (cached?.response) {
+    return c.json({ ...JSON.parse(cached.response as string), cached: true });
   }
 
-  scored.sort((a, b) => b.score - a.score);
+  // Fast path: rule-based score for ALL listings (no LLM)
+  const listings = await getActiveListings(c.env.DB, city);
+  const ruleScored = listings.results
+    .map((listing) => {
+      const { score, breakdown } = scoreListingRuleBased(listing, prefsCheck.value);
+      return { ...listing, score, breakdown };
+    })
+    .filter((l) => l.score > 0)
+    .sort((a: any, b: any) => b.score - a.score);
 
-  // Top 3 = locked teasers (show score + neighborhood only)
-  // 4-6 = full details (proof the product works)
-  const locked = scored.slice(0, 3).map((l) => ({
+  // Only generate LLM explanations for visible matches (4-6) — 3 LLM calls per preview max
+  const visibleCandidates = ruleScored.slice(3, 6);
+  const visible = await Promise.all(
+    visibleCandidates.map(async (l: any) => {
+      const { explanation } = await scoreListing(c.env.AI, l, prefsCheck.value, {
+        db: c.env.DB,
+      });
+      return {
+        score: l.score,
+        address: l.address,
+        price: l.price,
+        bedrooms: l.bedrooms,
+        bathrooms: l.bathrooms,
+        sqft: l.sqft,
+        neighborhood: l.neighborhood,
+        property_type: l.property_type,
+        url: l.url,
+        explanation,
+        last_checked: l.last_checked,
+        locked: false,
+      };
+    })
+  );
+
+  // Locked top 3 — no LLM, no addresses
+  const locked = ruleScored.slice(0, 3).map((l: any) => ({
     score: l.score,
     neighborhood: l.neighborhood,
     bedrooms: l.bedrooms,
@@ -105,26 +138,25 @@ app.post("/api/preview", async (c) => {
     locked: true,
   }));
 
-  const visible = scored.slice(3, 6).map((l) => ({
-    score: l.score,
-    address: l.address,
-    price: l.price,
-    bedrooms: l.bedrooms,
-    bathrooms: l.bathrooms,
-    sqft: l.sqft,
-    neighborhood: l.neighborhood,
-    property_type: l.property_type,
-    url: l.url,
-    explanation: l.explanation,
-    locked: false,
-  }));
-
-  return c.json({
-    total_matches: scored.length,
+  const response = {
+    total_matches: ruleScored.length,
     locked,
     visible,
     city,
-  });
+  };
+
+  // Cache for 1 hour
+  await c.env.DB.prepare(
+    `INSERT INTO preview_cache (pref_hash, response, created_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(pref_hash) DO UPDATE SET
+       response = excluded.response,
+       created_at = excluded.created_at`
+  )
+    .bind(prefHash, JSON.stringify(response))
+    .run();
+
+  return c.json(response);
 });
 
 // --- Create or update user ---
@@ -214,6 +246,26 @@ export default {
 
 // --- Helpers ---
 
+async function hashPreferences(prefs: any, city: string): Promise<string> {
+  // Canonical, sorted representation of prefs for cache key
+  const canonical = {
+    city,
+    n: (prefs.neighborhoods || []).slice().sort(),
+    pmin: prefs.price_min || 0,
+    pmax: prefs.price_max || 0,
+    bd: prefs.beds_min || 0,
+    ba: prefs.baths_min || 0,
+    sq: prefs.sqft_min || 0,
+    p: prefs.priorities || {},
+  };
+  const data = new TextEncoder().encode(JSON.stringify(canonical));
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16);
+}
+
 function priceRange(price: number): string {
   const m = price / 1_000_000;
   if (m < 1) return "under $1M";
@@ -261,8 +313,28 @@ async function runDailyScan(env: Bindings) {
   for (const user of users.results) {
     const prefs = JSON.parse(user.preferences as string);
 
-    for (const listing of activeListings.results) {
-      const { score, breakdown, explanation } = await scoreListing(env.AI, listing, prefs);
+    // Tier 1: rule-based score for ALL listings (fast, no LLM)
+    const scored = activeListings.results
+      .map((listing) => {
+        const { score, breakdown } = scoreListingRuleBased(listing, prefs);
+        return { listing, score, breakdown };
+      })
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    // Tier 2: LLM explanations only for top 10
+    const topN = 10;
+    for (let i = 0; i < scored.length; i++) {
+      const { listing, score, breakdown } = scored[i];
+      let explanation: string;
+
+      if (i < topN) {
+        const result = await scoreListing(env.AI, listing, prefs, { db: env.DB });
+        explanation = result.explanation;
+      } else {
+        explanation = `Scores ${score}/100 on rule-based match.`;
+      }
+
       await env.DB.prepare(
         `INSERT INTO user_scores (user_id, listing_id, score, breakdown, explanation)
          VALUES (?, ?, ?, ?, ?)
